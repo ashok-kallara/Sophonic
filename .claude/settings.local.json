@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:github.com)",
+      "Bash(uv init *)",
+      "Bash(uv add *)",
+      "Bash(uv run *)",
+      "Bash(AKASHIC_VAULT=/Users/ghar-mac/Documents/Obsidian/ak-work uv run *)"
+    ]
+  }
+}
