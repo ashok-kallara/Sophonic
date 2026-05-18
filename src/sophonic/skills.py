@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import frontmatter
-from jinja2 import Template
+from jinja2 import Environment, StrictUndefined
 
 
-@dataclass
+@dataclass(frozen=True)
 class SkillMeta:
     name: str
     description: str
@@ -31,7 +31,7 @@ def load_skill(name: str) -> SkillMeta | None:
     for base in [_user_skills_dir(), _bundled_skills_dir()]:
         skill_file = base / name / "SKILL.md"
         if skill_file.exists():
-            post = frontmatter.load(str(skill_file))
+            post = frontmatter.load(skill_file)
             return SkillMeta(
                 name=post.get("name", name),
                 description=post.get("description", ""),
@@ -53,7 +53,7 @@ def discover() -> list[SkillMeta]:
             skill_file = skill_dir / "SKILL.md"
             if not skill_file.exists():
                 continue
-            post = frontmatter.load(str(skill_file))
+            post = frontmatter.load(skill_file)
             skill_name = post.get("name", skill_dir.name)
             seen[skill_name] = SkillMeta(
                 name=skill_name,
@@ -77,9 +77,10 @@ def index() -> str:
 
 def skill_load(name: str) -> dict[str, Any]:
     """Load and return the full instructions for a named capability skill."""
-    meta = load_skill(name)
+    all_skills = discover()
+    meta = next((s for s in all_skills if s.name == name), None)
     if meta is None:
-        available = [s.name for s in discover()]
+        available = [s.name for s in all_skills]
         return {"error": f"Unknown skill: {name!r}. Available: {available}"}
     return {"name": meta.name, "body": meta.body}
 
@@ -89,7 +90,8 @@ def template(skill_name: str, template_name: str, **kwargs: Any) -> str:
     for base in [_user_skills_dir(), _bundled_skills_dir()]:
         tpl_path = base / skill_name / "templates" / f"{template_name}.md.j2"
         if tpl_path.exists():
-            return Template(tpl_path.read_text(encoding="utf-8")).render(**kwargs)
+            env = Environment(undefined=StrictUndefined)
+            return env.from_string(tpl_path.read_text(encoding="utf-8")).render(**kwargs)
     raise FileNotFoundError(f"Template not found: {skill_name}/templates/{template_name}.md.j2")
 
 

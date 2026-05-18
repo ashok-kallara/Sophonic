@@ -8,13 +8,15 @@ from unittest.mock import patch
 
 import pytest
 
+from sophonic import skills
+
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _make_skill(tmp_path: Path, name: str, description: str, tools: list[str], body: str) -> Path:
     skill_dir = tmp_path / name
     skill_dir.mkdir(parents=True)
-    content = f"---\nname: {name}\ndescription: {description}\ntools:\n"
+    content = f"---\nname: {name}\ndescription: \"{description}\"\ntools:\n"
     for t in tools:
         content += f"  - {t}\n"
     content += f"---\n\n{body}"
@@ -26,7 +28,6 @@ def _make_skill(tmp_path: Path, name: str, description: str, tools: list[str], b
 
 def test_load_skill_returns_meta(tmp_path):
     _make_skill(tmp_path, "gcal", "Calendar events", ["gcal_events_today"], "# GCal body")
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         meta = skills.load_skill("gcal")
@@ -38,7 +39,6 @@ def test_load_skill_returns_meta(tmp_path):
 
 
 def test_load_skill_missing_returns_none(tmp_path):
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         meta = skills.load_skill("nonexistent")
@@ -50,7 +50,6 @@ def test_load_skill_user_override_wins(tmp_path):
     user = tmp_path / "user"
     _make_skill(bundled, "gcal", "bundled description", ["gcal_events_today"], "bundled body")
     _make_skill(user, "gcal", "user description", ["gcal_events_today"], "user body")
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=bundled), \
          patch.object(skills, "_user_skills_dir", return_value=user):
         meta = skills.load_skill("gcal")
@@ -64,7 +63,6 @@ def test_load_skill_user_override_wins(tmp_path):
 def test_discover_returns_all_bundled(tmp_path):
     _make_skill(tmp_path, "gcal", "Calendar", ["gcal_events_today"], "body")
     _make_skill(tmp_path, "gmail", "Email", ["gmail_unread"], "body")
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         found = skills.discover()
@@ -78,7 +76,6 @@ def test_discover_user_override_replaces_bundled(tmp_path):
     user = tmp_path / "user"
     _make_skill(bundled, "gcal", "bundled", ["gcal_events_today"], "bundled")
     _make_skill(user, "gcal", "overridden", ["gcal_events_today"], "overridden")
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=bundled), \
          patch.object(skills, "_user_skills_dir", return_value=user):
         found = skills.discover()
@@ -91,7 +88,6 @@ def test_discover_user_override_replaces_bundled(tmp_path):
 
 def test_index_contains_name_and_description(tmp_path):
     _make_skill(tmp_path, "gcal", "Google Calendar events", ["gcal_events_today"], "body")
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         idx = skills.index()
@@ -100,18 +96,25 @@ def test_index_contains_name_and_description(tmp_path):
 
 
 def test_index_empty_when_no_skills(tmp_path):
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         idx = skills.index()
     assert idx == ""
 
 
+def test_index_format(tmp_path):
+    _make_skill(tmp_path, "gcal", "Calendar events", ["gcal_events_today"], "body")
+    with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
+         patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
+        idx = skills.index()
+    assert "Available capabilities" in idx
+    assert "- **gcal**: Calendar events" in idx
+
+
 # ── skill_load ────────────────────────────────────────────────────────────────
 
 def test_skill_load_returns_body(tmp_path):
     _make_skill(tmp_path, "gcal", "Calendar", ["gcal_events_today"], "# GCal\n\nUse this for calendar.")
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         result = skills.skill_load("gcal")
@@ -120,7 +123,6 @@ def test_skill_load_returns_body(tmp_path):
 
 
 def test_skill_load_unknown_returns_error(tmp_path):
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         result = skills.skill_load("nonexistent")
@@ -133,7 +135,6 @@ def test_template_renders_variables(tmp_path):
     tpl_dir = tmp_path / "obsidian" / "templates"
     tpl_dir.mkdir(parents=True)
     (tpl_dir / "daily.md.j2").write_text("# DAILY {{ date }}\n#sophonic\n", encoding="utf-8")
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         result = skills.template("obsidian", "daily", date="2026-05-17")
@@ -142,7 +143,6 @@ def test_template_renders_variables(tmp_path):
 
 
 def test_template_missing_raises(tmp_path):
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         with pytest.raises(FileNotFoundError):
@@ -157,7 +157,6 @@ def test_validate_passes_when_all_tools_registered(tmp_path):
         "gcal_events_today": lambda: None,
         "gcal_events_range": lambda: None,
     }
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         skills.validate(registry)  # should not raise
@@ -167,7 +166,6 @@ def test_validate_passes_when_skill_feature_disabled(tmp_path):
     """Skills with no registered tools (feature disabled) pass silently."""
     _make_skill(tmp_path, "gcal", "Calendar", ["gcal_events_today"], "body")
     registry: dict[str, Any] = {}  # gcal not loaded
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         skills.validate(registry)  # should not raise
@@ -180,7 +178,6 @@ def test_validate_raises_on_partial_registration(tmp_path):
         "gcal_events_today": lambda: None,
         # gcal_events_range missing — partial registration
     }
-    from sophonic import skills
     with patch.object(skills, "_bundled_skills_dir", return_value=tmp_path), \
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         with pytest.raises(ValueError, match="gcal_events_range"):
