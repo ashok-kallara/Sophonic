@@ -56,4 +56,9 @@ def build_registry() -> dict[str, Callable[..., Any]]:
         except ImportError:
             pass
 
-    return get_registry()
+    registry = get_registry()
+
+    from sophonic import skills
+    skills.validate(registry)
+
+    return registry

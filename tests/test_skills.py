@@ -182,3 +182,18 @@ def test_validate_raises_on_partial_registration(tmp_path):
          patch.object(skills, "_user_skills_dir", return_value=tmp_path / "nonexistent"):
         with pytest.raises(ValueError, match="gcal_events_range"):
             skills.validate(registry)
+
+
+# ── registry validation integration ──────────────────────────────────────────
+
+def test_build_registry_validates_skills(monkeypatch):
+    """build_registry() should pass validation when all skill tools are registered."""
+    monkeypatch.setenv("SOPHONIC_VAULT", "/tmp/sophonic_test_vault")
+    from sophonic.config import load_config
+    load_config.cache_clear()
+    from sophonic.tools import build_registry
+    # Should not raise — obsidian and reminders are always loaded
+    registry = build_registry()
+    assert "obsidian_add_task" in registry
+    assert "reminder_create" in registry
+    load_config.cache_clear()
