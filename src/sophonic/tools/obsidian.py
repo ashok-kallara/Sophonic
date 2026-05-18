@@ -26,7 +26,7 @@ def ensure_daily_note(for_date: date | None = None) -> Path:
     if not path.exists():
         d = for_date or date.today()
         path.write_text(
-            _template("obsidian", "daily", date=f"DAILY {d.isoformat()}"),
+            _template("obsidian", "daily", date=d.isoformat()),
             encoding="utf-8",
         )
     return path
