@@ -14,14 +14,16 @@ import anthropic
 
 from sophonic.config import load_config
 
-_SYSTEM = (
-    "You are Akashic, a personal AI assistant integrated with Obsidian, "
-    "Google Calendar, Gmail, Slack, and Zoom. "
-    "You help the user manage their day: tasks, reminders, calendar, messages, and meeting notes. "
-    "Always read from tools before answering about current state. "
-    "When creating tasks or reminders, use obsidian_add_task. "
-    "When the user says 'remind me', use reminder_create."
-)
+def _build_system_prompt() -> str:
+    """Build system prompt from base preamble + live skill index."""
+    from sophonic import skills as _skills
+    base = (
+        "You are Sophonic, a personal AI assistant integrated with Obsidian and your "
+        "productivity tools. You help manage tasks, reminders, calendar, messages, and "
+        "meeting notes. Always read from tools before answering about current state.\n\n"
+    )
+    idx = _skills.index()
+    return base + idx if idx else base
 
 
 def _py_to_json_schema(annotation: Any) -> dict[str, Any]:
@@ -103,8 +105,10 @@ def _client() -> anthropic.Anthropic:
 def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
     """Run a prompt through Claude with the tool-use loop. Return the final text."""
     from sophonic.tools import build_registry
+    from sophonic import skills as _skills
 
     reg = registry or build_registry()
+    reg = {**reg, "skill_load": _skills.skill_load}
     client = _client()
     cfg = load_config().llm
     tools = _build_tools(reg)
@@ -118,7 +122,7 @@ def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
             system=[
                 {
                     "type": "text",
-                    "text": _SYSTEM,
+                    "text": _build_system_prompt(),
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
