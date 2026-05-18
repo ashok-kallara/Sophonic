@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
-from akashic.config import load_config
+from sophonic.config import load_config
 
 
 def vault_root() -> Path:

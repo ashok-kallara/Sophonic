@@ -6,7 +6,7 @@ import base64
 import email as email_lib
 from typing import Any
 
-from akashic.google_auth import get_credentials
+from sophonic.google_auth import get_credentials
 
 
 def _service():

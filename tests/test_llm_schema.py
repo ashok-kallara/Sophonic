@@ -18,7 +18,7 @@ def sample_fn(
 
 
 def test_schema_types():
-    from akashic.llm import _build_tools
+    from sophonic.llm import _build_tools
 
     tools = _build_tools({"sample": sample_fn})
     assert len(tools) == 1
@@ -35,7 +35,7 @@ def test_schema_types():
 
 
 def test_schema_required_vs_optional():
-    from akashic.llm import _build_tools
+    from sophonic.llm import _build_tools
 
     tools = _build_tools({"sample": sample_fn})
     schema = tools[0]["input_schema"]
@@ -48,7 +48,7 @@ def test_schema_required_vs_optional():
 
 
 def test_schema_description_from_docstring():
-    from akashic.llm import _build_tools
+    from sophonic.llm import _build_tools
 
     tools = _build_tools({"sample": sample_fn})
     assert tools[0]["description"] == "Sample tool for schema testing."

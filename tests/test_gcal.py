@@ -20,9 +20,9 @@ def _make_event(summary: str, start_dt: str, end_dt: str) -> dict:
     }
 
 
-@patch("akashic.tools.gcal._service")
+@patch("sophonic.tools.gcal._service")
 def test_events_today_returns_events(mock_svc):
-    from akashic.tools.gcal import events_today
+    from sophonic.tools.gcal import events_today
 
     mock_svc.return_value = _mock_service([
         _make_event("Standup", "2026-05-03T09:00:00Z", "2026-05-03T09:15:00Z"),
@@ -35,18 +35,18 @@ def test_events_today_returns_events(mock_svc):
     assert result[1]["title"] == "1-on-1"
 
 
-@patch("akashic.tools.gcal._service")
+@patch("sophonic.tools.gcal._service")
 def test_events_today_empty(mock_svc):
-    from akashic.tools.gcal import events_today
+    from sophonic.tools.gcal import events_today
 
     mock_svc.return_value = _mock_service([])
     result = events_today()
     assert result == []
 
 
-@patch("akashic.tools.gcal._service")
+@patch("sophonic.tools.gcal._service")
 def test_events_range_passes_correct_dates(mock_svc):
-    from akashic.tools.gcal import events_range
+    from sophonic.tools.gcal import events_range
 
     svc = _mock_service([])
     mock_svc.return_value = svc
@@ -58,9 +58,9 @@ def test_events_range_passes_correct_dates(mock_svc):
     assert "2026-05-07" in call_kwargs["timeMax"]
 
 
-@patch("akashic.tools.gcal._service")
+@patch("sophonic.tools.gcal._service")
 def test_events_include_location_and_description(mock_svc):
-    from akashic.tools.gcal import events_today
+    from sophonic.tools.gcal import events_today
 
     event = _make_event("All Hands", "2026-05-03T10:00:00Z", "2026-05-03T11:00:00Z")
     event["location"] = "Room 101"

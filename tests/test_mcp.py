@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 
 def test_all_tools_registered_when_all_features_on(use_fixture_vault):
-    from akashic.tools import build_registry
+    from sophonic.tools import build_registry
 
     reg = build_registry()
     names = set(reg.keys())
@@ -25,21 +25,21 @@ def test_all_tools_registered_when_all_features_on(use_fixture_vault):
 
 
 def test_google_tools_absent_when_feature_disabled(use_fixture_vault, monkeypatch):
-    from akashic.config import load_config
+    from sophonic.config import load_config
     load_config.cache_clear()
-    monkeypatch.setenv("AKASHIC_VAULT", str(use_fixture_vault))
+    monkeypatch.setenv("SOPHONIC_VAULT", str(use_fixture_vault))
 
     # Patch features before build_registry is called
-    with patch("akashic.tools.load_config") as mock_cfg:
-        from akashic.config import Config, FeaturesConfig
+    with patch("sophonic.tools.load_config") as mock_cfg:
+        from sophonic.config import Config, FeaturesConfig
         cfg = Config()
         cfg.features.google = False
         mock_cfg.return_value = cfg
 
-        from akashic.tools import _REGISTRY
+        from sophonic.tools import _REGISTRY
         _REGISTRY.clear()
 
-        from akashic.tools import build_registry
+        from sophonic.tools import build_registry
         reg = build_registry()
 
     gcal_tools = [k for k in reg if k.startswith("gcal_") or k.startswith("gmail_")]
@@ -50,7 +50,7 @@ def test_google_tools_absent_when_feature_disabled(use_fixture_vault, monkeypatc
 
 
 def test_tool_names_are_namespaced(use_fixture_vault):
-    from akashic.tools import build_registry
+    from sophonic.tools import build_registry
 
     reg = build_registry()
     prefixes = {name.split("_")[0] for name in reg}

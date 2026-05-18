@@ -1,4 +1,4 @@
-"""Configuration: loads ~/.akashic/config.toml + environment variables."""
+"""Configuration: loads ~/.sophonic/config.toml + environment variables."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field, model_validator
 
-_CONFIG_DIR = Path.home() / ".akashic"
+_CONFIG_DIR = Path.home() / ".sophonic"
 _CONFIG_FILE = _CONFIG_DIR / "config.toml"
 
 
@@ -85,13 +85,13 @@ def load_config() -> Config:
             raw = tomllib.load(f)
 
     # Allow env overrides for the most common settings
-    if vault_path := os.environ.get("AKASHIC_VAULT"):
+    if vault_path := os.environ.get("SOPHONIC_VAULT"):
         raw.setdefault("vault", {})["path"] = vault_path
 
     return Config.model_validate(raw)
 
 
 def config_dir() -> Path:
-    """Return ~/.akashic/, creating it with tight permissions on first call."""
+    """Return ~/.sophonic/, creating it with tight permissions on first call."""
     _CONFIG_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     return _CONFIG_DIR

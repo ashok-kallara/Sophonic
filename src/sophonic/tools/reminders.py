@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from akashic.dates import parse_date
-from akashic.tools.obsidian import add_task
+from sophonic.dates import parse_date
+from sophonic.tools.obsidian import add_task
 
 
 def reminder_create(

@@ -12,7 +12,7 @@ from typing import Any, Union, get_args, get_origin
 
 import anthropic
 
-from akashic.config import load_config
+from sophonic.config import load_config
 
 _SYSTEM = (
     "You are Akashic, a personal AI assistant integrated with Obsidian, "
@@ -102,7 +102,7 @@ def _client() -> anthropic.Anthropic:
 
 def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
     """Run a prompt through Claude with the tool-use loop. Return the final text."""
-    from akashic.tools import build_registry
+    from sophonic.tools import build_registry
 
     reg = registry or build_registry()
     client = _client()

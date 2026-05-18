@@ -18,9 +18,9 @@ def use_fixture_vault(tmp_path, monkeypatch):
     shutil.copytree(FIXTURE_VAULT, vault)
     (vault / "Daily").mkdir(exist_ok=True)
 
-    monkeypatch.setenv("AKASHIC_VAULT", str(vault))
+    monkeypatch.setenv("SOPHONIC_VAULT", str(vault))
     # Bust the lru_cache so the new env var is picked up
-    from akashic.config import load_config
+    from sophonic.config import load_config
     load_config.cache_clear()
     yield vault
     load_config.cache_clear()

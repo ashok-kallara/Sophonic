@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from akashic.browser import run_async
+from sophonic.browser import run_async
 
-_NEEDS_AUTH = {"needs_auth": True, "run": "akashic auth slack"}
+_NEEDS_AUTH = {"needs_auth": True, "run": "sophonic auth slack"}
 
 # Slack's DOM selectors — stable attributes first, class fallbacks last
 _SELECTORS = {
@@ -49,7 +49,7 @@ async def _get_page(ctx, workspace_url: str):
 
 
 async def _unread_async(workspace_url: str) -> list[dict[str, Any]]:
-    from akashic.browser import persistent_browser
+    from sophonic.browser import persistent_browser
 
     async with persistent_browser("slack") as ctx:
         page = await _get_page(ctx, workspace_url)
@@ -80,7 +80,7 @@ async def _unread_async(workspace_url: str) -> list[dict[str, Any]]:
 
 
 async def _search_async(query: str, workspace_url: str) -> list[dict[str, Any]]:
-    from akashic.browser import persistent_browser
+    from sophonic.browser import persistent_browser
 
     async with persistent_browser("slack") as ctx:
         page = await _get_page(ctx, workspace_url)
@@ -116,14 +116,14 @@ async def _search_async(query: str, workspace_url: str) -> list[dict[str, Any]]:
 
 def unread(workspace_url: str | None = None) -> list[dict[str, Any]]:
     """Return unread Slack channels/DMs. workspace_url defaults to config value."""
-    from akashic.config import load_config
+    from sophonic.config import load_config
     url = workspace_url or load_config().slack.workspace_url
     return run_async(_unread_async(url))
 
 
 def search(query: str, workspace_url: str | None = None) -> list[dict[str, Any]]:
     """Search Slack for a query string."""
-    from akashic.config import load_config
+    from sophonic.config import load_config
     url = workspace_url or load_config().slack.workspace_url
     return run_async(_search_async(query, url))
 

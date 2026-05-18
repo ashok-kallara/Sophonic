@@ -9,19 +9,19 @@ from freezegun import freeze_time
 
 @freeze_time("2026-05-02")
 def test_ensure_daily_note_creates_file(use_fixture_vault):
-    from akashic.tools.obsidian import ensure_daily_note
+    from sophonic.tools.obsidian import ensure_daily_note
     path = ensure_daily_note()
     assert path.exists()
     assert "DAILY-2026-05-02" in path.name
     content = path.read_text()
     assert "## Tasks" in content
     assert "## Notes" in content
-    assert "#akashic" in content
+    assert "#sophonic" in content
 
 
 @freeze_time("2026-05-02")
 def test_ensure_daily_note_idempotent(use_fixture_vault):
-    from akashic.tools.obsidian import ensure_daily_note
+    from sophonic.tools.obsidian import ensure_daily_note
     path1 = ensure_daily_note()
     path1.write_text("custom content")
     path2 = ensure_daily_note()
@@ -30,7 +30,7 @@ def test_ensure_daily_note_idempotent(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_add_task_appears_in_daily_note(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, ensure_daily_note
+    from sophonic.tools.obsidian import add_task, ensure_daily_note
     result = add_task("Buy milk", due=date(2026, 5, 3))
     assert "Buy milk" in result["added"]
     assert "📅 2026-05-03" in result["added"]
@@ -40,7 +40,7 @@ def test_add_task_appears_in_daily_note(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_add_task_under_tasks_heading(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, ensure_daily_note
+    from sophonic.tools.obsidian import add_task, ensure_daily_note
     add_task("Write report", due=date(2026, 5, 5))
     content = ensure_daily_note().read_text()
     tasks_idx = content.index("## Tasks")
@@ -51,14 +51,14 @@ def test_add_task_under_tasks_heading(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_add_task_with_priority(use_fixture_vault):
-    from akashic.tools.obsidian import add_task
+    from sophonic.tools.obsidian import add_task
     result = add_task("Urgent task", due=date(2026, 5, 2), priority="high")
     assert "⏫" in result["added"]
 
 
 @freeze_time("2026-05-02")
 def test_list_tasks_due_today(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, list_tasks
+    from sophonic.tools.obsidian import add_task, list_tasks
     add_task("Task A", due=date(2026, 5, 2))
     add_task("Task B", due=date(2026, 5, 3))
     results = list_tasks(filter="due_today")
@@ -69,7 +69,7 @@ def test_list_tasks_due_today(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_list_tasks_overdue(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, list_tasks
+    from sophonic.tools.obsidian import add_task, list_tasks
     add_task("Old task", due=date(2026, 4, 30), note_date=date(2026, 4, 30))
     results = list_tasks(filter="overdue")
     assert any("Old task" in r["text"] for r in results)
@@ -77,7 +77,7 @@ def test_list_tasks_overdue(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_complete_task(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, complete_task, ensure_daily_note
+    from sophonic.tools.obsidian import add_task, complete_task, ensure_daily_note
     add_task("Finish slides", due=date(2026, 5, 2))
     note = ensure_daily_note()
     content = note.read_text()
@@ -92,7 +92,7 @@ def test_complete_task(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_rollover_copies_incomplete(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, ensure_daily_note, roll_over
+    from sophonic.tools.obsidian import add_task, ensure_daily_note, roll_over
     # Create yesterday's note with one task
     yesterday = date(2026, 5, 1)
     add_task("Yesterday's task", note_date=yesterday)
@@ -105,7 +105,7 @@ def test_rollover_copies_incomplete(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_rollover_is_idempotent(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, roll_over
+    from sophonic.tools.obsidian import add_task, roll_over
     yesterday = date(2026, 5, 1)
     add_task("Same task", note_date=yesterday)
     roll_over(from_date=yesterday, to_date=date(2026, 5, 2))
@@ -115,7 +115,7 @@ def test_rollover_is_idempotent(use_fixture_vault):
 
 @freeze_time("2026-05-02")
 def test_incomplete_yesterday_finds_tasks(use_fixture_vault):
-    from akashic.tools.obsidian import add_task, incomplete_yesterday
+    from sophonic.tools.obsidian import add_task, incomplete_yesterday
     yesterday = date(2026, 5, 1)
     add_task("Overdue item", due=date(2026, 5, 1), note_date=yesterday)
     results = incomplete_yesterday()
@@ -123,14 +123,14 @@ def test_incomplete_yesterday_finds_tasks(use_fixture_vault):
 
 
 def test_read_write_note(use_fixture_vault):
-    from akashic.tools.obsidian import read_note, write_note
+    from sophonic.tools.obsidian import read_note, write_note
     write_note("Test/note.md", "# Hello\n\nWorld")
     content = read_note("Test/note.md")
     assert "Hello" in content
 
 
 def test_search_vault(use_fixture_vault):
-    from akashic.tools.obsidian import search_vault, write_note
+    from sophonic.tools.obsidian import search_vault, write_note
     write_note("Search/target.md", "The quick brown fox")
     results = search_vault("quick brown")
     assert any("quick brown" in r["line"] for r in results)

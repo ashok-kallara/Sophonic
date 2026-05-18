@@ -8,7 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from akashic.paths import daily_note_path, meetings_dir, vault_root
+from sophonic.paths import daily_note_path, meetings_dir, vault_root
 
 # ── Task-line constants (Obsidian Tasks emoji format) ─────────────────────────
 
@@ -18,7 +18,7 @@ _DONE_RE = re.compile(r"^- \[x\] .+", re.MULTILINE)
 
 _DAILY_TEMPLATE = """\
 # {title}
-#akashic
+#sophonic
 
 ## Tasks
 
@@ -72,7 +72,7 @@ def add_task(
     note_date: date | None = None,
 ) -> dict[str, Any]:
     """Append a task line under ## Tasks in today's (or given) daily note."""
-    from akashic.dates import parse_date
+    from sophonic.dates import parse_date
 
     due_date: date | None = None
     if isinstance(due, str):
@@ -102,7 +102,7 @@ def list_tasks(
     Scan the vault for task lines matching a filter.
     filter: "all" | "due_today" | "overdue" | "incomplete_yesterday" | "due_before:<YYYY-MM-DD>"
     """
-    from akashic.dates import parse_date, today, yesterday
+    from sophonic.dates import parse_date, today, yesterday
 
     ref: date = today()
     if isinstance(target_date, str):
@@ -148,7 +148,7 @@ def list_tasks(
 
 def incomplete_yesterday() -> list[dict[str, Any]]:
     """Return tasks that were not completed and were due yesterday."""
-    from akashic.dates import yesterday
+    from sophonic.dates import yesterday
     ypath = daily_note_path(yesterday())
     results = []
 
@@ -181,7 +181,7 @@ def roll_over(
     to_date: date | None = None,
 ) -> dict[str, Any]:
     """Copy incomplete tasks from from_date's note into to_date's note. Idempotent."""
-    from akashic.dates import today, yesterday
+    from sophonic.dates import today, yesterday
 
     src_date = from_date or yesterday()
     dst_date = to_date or today()
@@ -318,8 +318,8 @@ def save_meeting_note(
     d = recorded_at or date.today()
     filename = f"{d.isoformat()} - {title}.md"
     rel_path = f"{load_config().vault.meetings_dir}/{filename}"
-    from akashic.config import load_config as _cfg
-    frontmatter = f"---\nsource: {source}\nrecorded_at: {d.isoformat()}\ntags: [akashic]\n---\n\n"
+    from sophonic.config import load_config as _cfg
+    frontmatter = f"---\nsource: {source}\nrecorded_at: {d.isoformat()}\ntags: [sophonic]\n---\n\n"
     write_note(rel_path, frontmatter + f"# {title}\n\n" + content)
 
     # Backlink in today's daily note
@@ -335,7 +335,7 @@ def save_meeting_note(
 
 
 def load_config():
-    from akashic.config import load_config as _load
+    from sophonic.config import load_config as _load
     return _load()
 
 

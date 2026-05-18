@@ -81,10 +81,10 @@ def _mock_transcript_page(transcript_text="Speaker 1: Hello"):
 
 @pytest.mark.asyncio
 async def test_list_recordings_returns_entries():
-    from akashic.tools.zoom import _list_recordings_async
+    from sophonic.tools.zoom import _list_recordings_async
 
     page = _mock_recording_list_page()
-    with patch("akashic.browser.persistent_browser") as mock_pb:
+    with patch("sophonic.browser.persistent_browser") as mock_pb:
         mock_pb.return_value.__aenter__ = AsyncMock(return_value=_ctx_with_page(page))
         mock_pb.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await _list_recordings_async("https://zoom.us/recording", since_days=30)
@@ -96,23 +96,23 @@ async def test_list_recordings_returns_entries():
 
 @pytest.mark.asyncio
 async def test_list_recordings_needs_auth():
-    from akashic.tools.zoom import _list_recordings_async
+    from sophonic.tools.zoom import _list_recordings_async
 
     page = _mock_recording_list_page(url="https://zoom.us/signin")
-    with patch("akashic.browser.persistent_browser") as mock_pb:
+    with patch("sophonic.browser.persistent_browser") as mock_pb:
         mock_pb.return_value.__aenter__ = AsyncMock(return_value=_ctx_with_page(page))
         mock_pb.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await _list_recordings_async("https://zoom.us/recording", since_days=7)
 
-    assert result == [{"needs_auth": True, "run": "akashic auth zoom"}]
+    assert result == [{"needs_auth": True, "run": "sophonic auth zoom"}]
 
 
 @pytest.mark.asyncio
 async def test_fetch_transcript_extracts_text():
-    from akashic.tools.zoom import _fetch_transcript_async
+    from sophonic.tools.zoom import _fetch_transcript_async
 
     page = _mock_transcript_page("Speaker 1: Hello\nSpeaker 2: Hi there")
-    with patch("akashic.browser.persistent_browser") as mock_pb:
+    with patch("sophonic.browser.persistent_browser") as mock_pb:
         mock_pb.return_value.__aenter__ = AsyncMock(return_value=_ctx_with_page(page))
         mock_pb.return_value.__aexit__ = AsyncMock(return_value=False)
         result = await _fetch_transcript_async("https://zoom.us/recording/abc")
@@ -122,9 +122,9 @@ async def test_fetch_transcript_extracts_text():
 
 @freeze_time("2026-05-03")
 def test_save_transcript_files_meeting_note(use_fixture_vault):
-    from akashic.tools.zoom import save_transcript
+    from sophonic.tools.zoom import save_transcript
 
-    with patch("akashic.tools.zoom.transcript") as mock_t:
+    with patch("sophonic.tools.zoom.transcript") as mock_t:
         mock_t.return_value = {
             "url": "https://zoom.us/recording/xyz",
             "title": "Q2 Planning",
@@ -150,7 +150,7 @@ def test_save_transcript_files_meeting_note(use_fixture_vault):
 
 
 def test_parse_recording_date_formats():
-    from akashic.tools.zoom import _parse_recording_date
+    from sophonic.tools.zoom import _parse_recording_date
 
     assert _parse_recording_date("2026-05-03") == date(2026, 5, 3)
     assert _parse_recording_date("2026-05-03T09:00:00Z") == date(2026, 5, 3)

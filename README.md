@@ -1,6 +1,6 @@
-# Akashic
+# Sophonic
 
-A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE — no web UI, no cloud dashboard. It reads and writes your Obsidian vault directly, pulls live context from Google Calendar, Gmail, Slack, and Zoom, and is available both as a CLI (`akashic`) and as an MCP server (`akashic-mcp`) you can register in Claude Code, Cursor, or any IDE that supports MCP.
+A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE — no web UI, no cloud dashboard. It reads and writes your Obsidian vault directly, pulls live context from Google Calendar, Gmail, Slack, and Zoom, and is available both as a CLI (`sophonic`) and as an MCP server (`sophonic-mcp`) you can register in Claude Code, Cursor, or any IDE that supports MCP.
 
 ---
 
@@ -59,18 +59,18 @@ A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE 
 
 ```
                   ┌─────────────────────────────────────────┐
-   $ akashic ...  │   akashic.cli (Typer)                   │
-                  │   Anthropic tool-use loop (akashic ask) │
+   $ sophonic ...  │   sophonic.cli (Typer)                   │
+                  │   Anthropic tool-use loop (sophonic ask) │
                   └──────────────┬──────────────────────────┘
                                  │
                   ┌──────────────▼──────────────────────────┐
-                  │   akashic.tools  (shared core)          │
+                  │   sophonic.tools  (shared core)          │
                   │   obsidian · reminders · gcal · gmail   │
                   │   slack_web · zoom                      │
                   └──────────────▲──────────────────────────┘
                                  │
                   ┌──────────────┴──────────────────────────┐
-   Claude Code /  │   akashic.mcp_server (FastMCP, stdio)   │
+   Claude Code /  │   sophonic.mcp_server (FastMCP, stdio)   │
    Cursor / IDE   │   22 namespaced tools                   │
                   └─────────────────────────────────────────┘
 ```
@@ -83,9 +83,9 @@ Both entry points share identical tool implementations — no duplicated logic. 
 
 - **Python 3.12+** (managed by `uv`)
 - **[uv](https://docs.astral.sh/uv/)** — `brew install uv`
-- **Anthropic API key** — for `akashic ask` (CLI AI mode)
+- **Anthropic API key** — for `sophonic ask` (CLI AI mode)
 - **Obsidian** with the [Tasks plugin](https://obsidian-tasks-group.github.io/obsidian-tasks/) installed (already supported — no config changes needed)
-- **Google Cloud project** with Calendar and Gmail APIs enabled — only for `akashic auth google`
+- **Google Cloud project** with Calendar and Gmail APIs enabled — only for `sophonic auth google`
 - **Playwright browsers** — installed once with `uv run playwright install chromium`
 - **Island browser** (optional) — if your org uses [Island](https://www.island.io/) and you want Slack/Zoom scraped through it
 
@@ -96,7 +96,7 @@ Both entry points share identical tool implementations — no duplicated logic. 
 ```bash
 # 1. Clone
 git clone <repo-url>
-cd akashic
+cd sophonic
 
 # 2. Install dependencies
 uv sync
@@ -105,30 +105,30 @@ uv sync
 uv run playwright install chromium
 
 # 4. Verify
-uv run akashic --help
-uv run akashic-mcp --help
+uv run sophonic --help
+uv run sophonic-mcp --help
 ```
 
-Create `~/.akashic/` and set your API key:
+Create `~/.sophonic/` and set your API key:
 
 ```bash
-mkdir -p ~/.akashic
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.akashic/.env
+mkdir -p ~/.sophonic
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.sophonic/.env
 ```
 
-Add to your shell profile so `akashic ask` can find it:
+Add to your shell profile so `sophonic ask` can find it:
 
 ```bash
 # ~/.zshrc or ~/.config/fish/config.fish
 export ANTHROPIC_API_KEY="sk-ant-..."
-export AKASHIC_VAULT="/Users/you/Documents/Obsidian/your-vault"
+export SOPHONIC_VAULT="/Users/you/Documents/Obsidian/your-vault"
 ```
 
 ---
 
 ## Configuration
 
-All settings live in `~/.akashic/config.toml`. Every key has a working default — create the file only for values you want to override.
+All settings live in `~/.sophonic/config.toml`. Every key has a working default — create the file only for values you want to override.
 
 ```toml
 [vault]
@@ -145,7 +145,7 @@ slack  = true
 zoom   = true
 
 [google]
-client_secret_file = "~/.akashic/google_client_secret.json"
+client_secret_file = "~/.sophonic/google_client_secret.json"
 scopes = [
   "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -184,7 +184,7 @@ Set any of `google`, `slack`, `zoom` to `false` to completely disable that integ
 
 ### Browser engine (Slack & Zoom)
 
-Each Playwright-backed integration has its own engine setting and its own persistent session directory under `~/.akashic/playwright-profile/<engine>-<integration>/`. Switching engines does not clobber an existing logged-in session.
+Each Playwright-backed integration has its own engine setting and its own persistent session directory under `~/.sophonic/playwright-profile/<engine>-<integration>/`. Switching engines does not clobber an existing logged-in session.
 
 | Engine | When to use |
 |---|---|
@@ -197,12 +197,12 @@ Each Playwright-backed integration has its own engine setting and its own persis
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a project → enable **Google Calendar API** and **Gmail API**
 3. Create an **OAuth 2.0 Client ID** (Desktop app type)
-4. Download the JSON file and save it as `~/.akashic/google_client_secret.json`
-5. Run `akashic auth google` — a browser tab opens for consent; tokens are saved to `~/.akashic/tokens/google.json` (mode `0600`)
+4. Download the JSON file and save it as `~/.sophonic/google_client_secret.json`
+5. Run `sophonic auth google` — a browser tab opens for consent; tokens are saved to `~/.sophonic/tokens/google.json` (mode `0600`)
 
 ### LLM model
 
-`akashic ask` uses Anthropic's API with prompt caching enabled. Change the model in `[llm]`:
+`sophonic ask` uses Anthropic's API with prompt caching enabled. Change the model in `[llm]`:
 
 ```toml
 [llm]
@@ -217,68 +217,68 @@ model = "claude-opus-4-7"   # or claude-haiku-4-5-20251001 for faster/cheaper
 
 ```bash
 # One-time OAuth flow — opens a browser tab for Google consent
-akashic auth google
+sophonic auth google
 ```
 
-Tokens are stored at `~/.akashic/tokens/google.json`. They refresh automatically on subsequent calls. Re-run the command if you change scopes in `config.toml`.
+Tokens are stored at `~/.sophonic/tokens/google.json`. They refresh automatically on subsequent calls. Re-run the command if you change scopes in `config.toml`.
 
 ### Slack
 
 ```bash
 # Opens your configured browser engine headed so you can log in
-akashic auth slack
+sophonic auth slack
 ```
 
-Log in to your Slack workspace in the browser that opens, then press Enter in the terminal. The session (cookies + local storage) is persisted under `~/.akashic/playwright-profile/chromium-slack/` (or the engine you configured). Subsequent `akashic slack` commands run headless against that profile.
+Log in to your Slack workspace in the browser that opens, then press Enter in the terminal. The session (cookies + local storage) is persisted under `~/.sophonic/playwright-profile/chromium-slack/` (or the engine you configured). Subsequent `sophonic slack` commands run headless against that profile.
 
-If your org uses Island, first set `[browser.slack] engine = "island"` in config, then run `akashic auth slack`.
+If your org uses Island, first set `[browser.slack] engine = "island"` in config, then run `sophonic auth slack`.
 
 ### Zoom
 
 ```bash
-akashic auth zoom
+sophonic auth zoom
 ```
 
-Same flow as Slack — logs in once, saves session, runs headless thereafter. Session stored under `~/.akashic/playwright-profile/chromium-zoom/`.
+Same flow as Slack — logs in once, saves session, runs headless thereafter. Session stored under `~/.sophonic/playwright-profile/chromium-zoom/`.
 
 ---
 
 ## CLI Reference
 
-Set `AKASHIC_VAULT` in your environment or in `~/.akashic/config.toml` so commands know where your vault is.
+Set `SOPHONIC_VAULT` in your environment or in `~/.sophonic/config.toml` so commands know where your vault is.
 
 ### Daily workflow
 
 ```bash
 # Print today's daily note (creates it from template if it doesn't exist yet)
-akashic daily
+sophonic daily
 
 # Show today's calendar + due tasks + anything incomplete from yesterday
-akashic today
+sophonic today
 
 # Copy yesterday's incomplete tasks into today's daily note (idempotent)
-akashic rollover
+sophonic rollover
 ```
 
-`akashic rollover` is safe to run multiple times — it skips lines already present in today's note. Pair it with a cron job for automatic morning roll-over:
+`sophonic rollover` is safe to run multiple times — it skips lines already present in today's note. Pair it with a cron job for automatic morning roll-over:
 
 ```cron
-0 8 * * * /path/to/akashic rollover
+0 8 * * * /path/to/sophonic rollover
 ```
 
 ### Reminders & tasks
 
 ```bash
 # Add a task to today's daily note with a parsed due date
-akashic remind "send Q2 slides to the team next Friday"
-akashic remind "call dentist tomorrow"
-akashic remind "pay credit card in 5 days"
+sophonic remind "send Q2 slides to the team next Friday"
+sophonic remind "call dentist tomorrow"
+sophonic remind "pay credit card in 5 days"
 
 # List tasks
-akashic tasks --due today
-akashic tasks --due 2026-05-10      # due before this date
-akashic tasks --overdue
-akashic tasks --incomplete-yesterday
+sophonic tasks --due today
+sophonic tasks --due 2026-05-10      # due before this date
+sophonic tasks --overdue
+sophonic tasks --incomplete-yesterday
 ```
 
 **Supported natural-language date expressions:**
@@ -296,55 +296,55 @@ akashic tasks --incomplete-yesterday
 ### Mail
 
 ```bash
-akashic mail unread               # 20 most recent unread messages
-akashic mail unread --max 50
+sophonic mail unread               # 20 most recent unread messages
+sophonic mail unread --max 50
 ```
 
 ### Slack
 
 ```bash
-akashic slack unread              # unread channels and DMs
-akashic slack search "incident postmortem"
+sophonic slack unread              # unread channels and DMs
+sophonic slack search "incident postmortem"
 ```
 
-If not authenticated, commands print `Not authenticated. Run: akashic auth slack` and exit cleanly.
+If not authenticated, commands print `Not authenticated. Run: sophonic auth slack` and exit cleanly.
 
 ### Zoom
 
 ```bash
 # List recent recordings (default: last 7 days)
-akashic zoom transcripts
-akashic zoom transcripts --since 14d
+sophonic zoom transcripts
+sophonic zoom transcripts --since 14d
 
 # Fetch a transcript and file it as an Obsidian meeting note
-akashic zoom save "https://zoom.us/recording/..." --title "Q2 Planning" --date 2026-05-03
+sophonic zoom save "https://zoom.us/recording/..." --title "Q2 Planning" --date 2026-05-03
 ```
 
-`akashic zoom save` writes the transcript to `Work/Meetings/YYYY-MM-DD - <title>.md` and adds a backlink under `## Notes` in today's daily note.
+`sophonic zoom save` writes the transcript to `Work/Meetings/YYYY-MM-DD - <title>.md` and adds a backlink under `## Notes` in today's daily note.
 
 ### AI assistant (free-form)
 
 ```bash
-akashic ask "what's on my calendar today and are there any unfinished tasks?"
-akashic ask "summarize my unread emails and add action items as tasks due today"
-akashic ask "find the standup transcript from yesterday and summarize blockers"
+sophonic ask "what's on my calendar today and are there any unfinished tasks?"
+sophonic ask "summarize my unread emails and add action items as tasks due today"
+sophonic ask "find the standup transcript from yesterday and summarize blockers"
 ```
 
-`akashic ask` runs the full Anthropic tool-use loop — it calls whichever tools it needs (calendar, tasks, search, etc.) and returns a plain-English answer. Uses `claude-sonnet-4-6` with prompt caching by default.
+`sophonic ask` runs the full Anthropic tool-use loop — it calls whichever tools it needs (calendar, tasks, search, etc.) and returns a plain-English answer. Uses `claude-sonnet-4-6` with prompt caching by default.
 
 ### Auth
 
 ```bash
-akashic auth google    # OAuth flow for Calendar + Gmail
-akashic auth slack     # headed browser login for Slack
-akashic auth zoom      # headed browser login for Zoom
+sophonic auth google    # OAuth flow for Calendar + Gmail
+sophonic auth slack     # headed browser login for Slack
+sophonic auth zoom      # headed browser login for Zoom
 ```
 
 ---
 
 ## MCP Server
 
-`akashic-mcp` runs as an MCP server over stdio. Any IDE that supports the Model Context Protocol can call it — Claude Code, Cursor, VS Code with an MCP extension, etc.
+`sophonic-mcp` runs as an MCP server over stdio. Any IDE that supports the Model Context Protocol can call it — Claude Code, Cursor, VS Code with an MCP extension, etc.
 
 ### Registering in Claude Code
 
@@ -353,15 +353,15 @@ Add to `~/.claude.json` (or to a project's `.claude/settings.json`):
 ```json
 {
   "mcpServers": {
-    "akashic": {
+    "sophonic": {
       "command": "uv",
       "args": [
         "run",
-        "--project", "/Users/you/projects/akashic",
-        "akashic-mcp"
+        "--project", "/Users/you/projects/sophonic",
+        "sophonic-mcp"
       ],
       "env": {
-        "AKASHIC_VAULT": "/Users/you/Documents/Obsidian/your-vault",
+        "SOPHONIC_VAULT": "/Users/you/Documents/Obsidian/your-vault",
         "ANTHROPIC_API_KEY": "sk-ant-..."
       }
     }
@@ -372,7 +372,7 @@ Add to `~/.claude.json` (or to a project's `.claude/settings.json`):
 Or via the Claude Code `/mcp` command:
 
 ```
-/mcp add akashic uv run --project /Users/you/projects/akashic akashic-mcp
+/mcp add sophonic uv run --project /Users/you/projects/sophonic sophonic-mcp
 ```
 
 Once registered, Claude Code can call tools like `obsidian_add_task` directly without you typing anything — just ask it naturally and it will call the right tools.
@@ -382,9 +382,9 @@ Once registered, Claude Code can call tools like `obsidian_add_task` directly wi
 ```json
 {
   "allowedTools": [
-    "mcp__akashic__obsidian_*",
-    "mcp__akashic__gcal_*",
-    "mcp__akashic__reminder_create"
+    "mcp__sophonic__obsidian_*",
+    "mcp__sophonic__gcal_*",
+    "mcp__sophonic__reminder_create"
   ]
 }
 ```
@@ -422,7 +422,7 @@ All 22 tools are available when all features are enabled. Disabled integrations 
 
 ## Obsidian Conventions
 
-Akashic works with the [Obsidian Tasks plugin](https://obsidian-tasks-group.github.io/obsidian-tasks/) emoji format. No changes to your vault configuration are needed — the tools write standard Markdown that the plugin picks up automatically.
+Sophonic works with the [Obsidian Tasks plugin](https://obsidian-tasks-group.github.io/obsidian-tasks/) emoji format. No changes to your vault configuration are needed — the tools write standard Markdown that the plugin picks up automatically.
 
 ### Daily notes
 
@@ -430,7 +430,7 @@ Each day gets its own note at `Daily/DAILY-YYYY-MM-DD.md` (configurable). Create
 
 ```markdown
 # DAILY 2026-05-03
-#akashic
+#sophonic
 
 ## Tasks
 
@@ -457,17 +457,17 @@ Tasks follow the Obsidian Tasks emoji convention:
 | `🔽` | Low priority |
 | `✅ YYYY-MM-DD` | Completion date (added when task is marked done) |
 
-Your existing `Task Dashboard.md` (or any vault-wide Tasks query) picks up tasks written by Akashic automatically — no dashboard changes needed.
+Your existing `Task Dashboard.md` (or any vault-wide Tasks query) picks up tasks written by Sophonic automatically — no dashboard changes needed.
 
 ### Meeting notes
 
-`zoom_save_transcript` (and `akashic zoom save`) writes notes to `Work/Meetings/YYYY-MM-DD - <title>.md` with this structure:
+`zoom_save_transcript` (and `sophonic zoom save`) writes notes to `Work/Meetings/YYYY-MM-DD - <title>.md` with this structure:
 
 ```markdown
 ---
 source: zoom
 recorded_at: 2026-05-03
-tags: [akashic]
+tags: [sophonic]
 ---
 
 # Q2 Planning
@@ -487,20 +487,20 @@ A backlink is added to the day's `## Notes` section:
 - [[Work/Meetings/2026-05-03 - Q2 Planning]]
 ```
 
-All Akashic-created notes include a `#akashic` tag, making it easy to build a Dataview query of everything the assistant has written.
+All Sophonic-created notes include a `#sophonic` tag, making it easy to build a Dataview query of everything the assistant has written.
 
 ---
 
 ## Project Structure
 
 ```
-akashic/
+sophonic/
 ├── pyproject.toml               # uv project: deps, console scripts, pytest config
 ├── uv.lock
 ├── .python-version              # 3.12
-├── .env.example                 # copy to ~/.akashic/.env
-├── src/akashic/
-│   ├── config.py                # Pydantic config model, loads ~/.akashic/config.toml
+├── .env.example                 # copy to ~/.sophonic/.env
+├── src/sophonic/
+│   ├── config.py                # Pydantic config model, loads ~/.sophonic/config.toml
 │   ├── paths.py                 # vault root, daily_note_path(), meetings_dir()
 │   ├── dates.py                 # natural-language date parser (native + dateparser fallback)
 │   ├── google_auth.py           # shared Google OAuth 2.0 flow
@@ -546,7 +546,7 @@ All integration tests (Google, Slack, Zoom) use mocked Playwright and mocked Goo
 
 ### Adding a new integration
 
-1. Create `src/akashic/tools/<name>.py` with your functions and a `TOOLS` dict:
+1. Create `src/sophonic/tools/<name>.py` with your functions and a `TOOLS` dict:
 
    ```python
    TOOLS: dict[str, Any] = {
@@ -565,7 +565,7 @@ All integration tests (Google, Slack, Zoom) use mocked Playwright and mocked Goo
 
    ```python
    if cfg.myintegration:
-       from akashic.tools import myintegration
+       from sophonic.tools import myintegration
        for name, fn in myintegration.TOOLS.items():
            register(name, fn)
    ```

@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncGenerator
 
-from akashic.config import config_dir, load_config
+from sophonic.config import config_dir, load_config
 
 
 def _profile_dir(integration: str, engine: str) -> Path:
@@ -25,7 +25,7 @@ def _island_executable() -> str:
         return default
     raise FileNotFoundError(
         "Island browser not found at /Applications/Island.app/. "
-        "Set [browser.island] path = '...' in ~/.akashic/config.toml"
+        "Set [browser.island] path = '...' in ~/.sophonic/config.toml"
     )
 
 
@@ -85,7 +85,7 @@ async def open_auth_browser(integration: str, url: str) -> None:
         await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: input(
-                f"\n[akashic] Log in to {integration} in the browser, "
+                f"\n[sophonic] Log in to {integration} in the browser, "
                 "then press Enter here to save the session...\n"
             ),
         )

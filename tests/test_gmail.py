@@ -31,9 +31,9 @@ def _mock_service_with_messages(messages: list[dict]):
     return svc
 
 
-@patch("akashic.tools.gmail._service")
+@patch("sophonic.tools.gmail._service")
 def test_unread_returns_summaries(mock_svc):
-    from akashic.tools.gmail import unread
+    from sophonic.tools.gmail import unread
 
     msgs = [
         _make_message("1", "Meeting notes", "alice@example.com", "Here are the notes..."),
@@ -48,9 +48,9 @@ def test_unread_returns_summaries(mock_svc):
     assert result[1]["subject"] == "Lunch?"
 
 
-@patch("akashic.tools.gmail._service")
+@patch("sophonic.tools.gmail._service")
 def test_unread_empty(mock_svc):
-    from akashic.tools.gmail import unread
+    from sophonic.tools.gmail import unread
 
     svc = MagicMock()
     svc.users().messages().list().execute.return_value = {"messages": []}
@@ -60,9 +60,9 @@ def test_unread_empty(mock_svc):
     assert result == []
 
 
-@patch("akashic.tools.gmail._service")
+@patch("sophonic.tools.gmail._service")
 def test_search_uses_query(mock_svc):
-    from akashic.tools.gmail import search
+    from sophonic.tools.gmail import search
 
     svc = MagicMock()
     svc.users().messages().list().execute.return_value = {"messages": []}
@@ -74,9 +74,9 @@ def test_search_uses_query(mock_svc):
     assert call_kwargs["q"] == "from:boss@example.com is:unread"
 
 
-@patch("akashic.tools.gmail._service")
+@patch("sophonic.tools.gmail._service")
 def test_thread_returns_messages(mock_svc):
-    from akashic.tools.gmail import thread
+    from sophonic.tools.gmail import thread
 
     svc = MagicMock()
     svc.users().threads().get().execute.return_value = {

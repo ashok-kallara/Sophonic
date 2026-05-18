@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-app = typer.Typer(name="akashic", help="Obsidian-native AI assistant")
+app = typer.Typer(name="sophonic", help="Obsidian-native AI assistant")
 console = Console()
 
 
@@ -21,7 +21,7 @@ console = Console()
 @app.command()
 def ask(prompt: str = typer.Argument(..., help="Natural-language question or request")):
     """Ask Akashic anything — uses the full tool-use loop with Claude."""
-    from akashic.llm import ask as _ask
+    from sophonic.llm import ask as _ask
     console.print("[dim]Thinking...[/dim]")
     result = _ask(prompt)
     console.print(Markdown(result))
@@ -32,14 +32,14 @@ def ask(prompt: str = typer.Argument(..., help="Natural-language question or req
 @app.command()
 def today():
     """Show today's calendar, due tasks, and yesterday's incomplete tasks."""
-    from akashic.config import load_config
-    from akashic.tools.obsidian import incomplete_yesterday, list_tasks
+    from sophonic.config import load_config
+    from sophonic.tools.obsidian import incomplete_yesterday, list_tasks
 
     cfg = load_config().features
 
     if cfg.google:
         try:
-            from akashic.tools.gcal import events_today
+            from sophonic.tools.gcal import events_today
             events = events_today()
             _print_events(events)
         except Exception as e:
@@ -78,7 +78,7 @@ def _print_tasks(heading: str, tasks: list) -> None:
 @app.command()
 def daily():
     """Print today's daily note (creates it if missing)."""
-    from akashic.tools.obsidian import get_daily_note
+    from sophonic.tools.obsidian import get_daily_note
     console.print(Markdown(get_daily_note()))
 
 
@@ -87,7 +87,7 @@ def daily():
 @app.command()
 def rollover():
     """Copy yesterday's incomplete tasks into today's daily note."""
-    from akashic.tools.obsidian import roll_over
+    from sophonic.tools.obsidian import roll_over
     result = roll_over()
     if result["rolled"]:
         console.print(f"[green]Rolled over {result['rolled']} task(s) from {result['from']} → {result['to']}[/green]")
@@ -102,7 +102,7 @@ def rollover():
 @app.command()
 def remind(phrase: str = typer.Argument(..., help="Natural-language reminder")):
     """Create a reminder in today's daily note. E.g. 'send report by Friday'."""
-    from akashic.tools.reminders import reminder_create
+    from sophonic.tools.reminders import reminder_create
     result = reminder_create(phrase)
     console.print(f"[green]Added:[/green] {result['added']}")
     console.print(f"[dim]→ {result['file']}[/dim]")
@@ -117,7 +117,7 @@ def tasks(
     incomplete_yesterday: bool = typer.Option(False, "--incomplete-yesterday"),
 ):
     """List Obsidian tasks with optional filters."""
-    from akashic.tools.obsidian import incomplete_yesterday as iy, list_tasks
+    from sophonic.tools.obsidian import incomplete_yesterday as iy, list_tasks
 
     if incomplete_yesterday:
         results = iy()
@@ -146,11 +146,11 @@ app.add_typer(mail_app, name="mail")
 @mail_app.command("unread")
 def mail_unread(max: int = typer.Option(20, "--max")):
     """Show unread Gmail messages."""
-    from akashic.config import load_config
+    from sophonic.config import load_config
     if not load_config().features.google:
         console.print("[red]Google integration is disabled in config.[/red]")
         raise typer.Exit(1)
-    from akashic.tools.gmail import unread
+    from sophonic.tools.gmail import unread
     msgs = unread(max=max)
     for m in msgs:
         console.print(f"[bold]{m['subject']}[/bold]  [dim]{m['from']}[/dim]")
@@ -166,11 +166,11 @@ app.add_typer(slack_app, name="slack")
 @slack_app.command("unread")
 def slack_unread():
     """Show unread Slack messages."""
-    from akashic.config import load_config
+    from sophonic.config import load_config
     if not load_config().features.slack:
         console.print("[red]Slack integration is disabled in config.[/red]")
         raise typer.Exit(1)
-    from akashic.tools.slack_web import unread
+    from sophonic.tools.slack_web import unread
     items = unread()
     for item in items:
         if "needs_auth" in item:
@@ -182,7 +182,7 @@ def slack_unread():
 @slack_app.command("search")
 def slack_search(query: str = typer.Argument(...)):
     """Search Slack."""
-    from akashic.tools.slack_web import search
+    from sophonic.tools.slack_web import search
     items = search(query)
     for item in items:
         console.print(f"  {item.get('text', item)}")
@@ -197,12 +197,12 @@ app.add_typer(zoom_app, name="zoom")
 @zoom_app.command("transcripts")
 def zoom_transcripts(since: str = typer.Option("7d", "--since")):
     """List recent Zoom recordings."""
-    from akashic.config import load_config
+    from sophonic.config import load_config
     if not load_config().features.zoom:
         console.print("[red]Zoom integration is disabled in config.[/red]")
         raise typer.Exit(1)
     days = int(since.rstrip("d"))
-    from akashic.tools.zoom import transcripts
+    from sophonic.tools.zoom import transcripts
     items = transcripts(since_days=days)
     for item in items:
         if "needs_auth" in item:
@@ -213,16 +213,16 @@ def zoom_transcripts(since: str = typer.Option("7d", "--since")):
 
 @zoom_app.command("save")
 def zoom_save(
-    url: str = typer.Argument(..., help="Recording URL from 'akashic zoom transcripts'"),
+    url: str = typer.Argument(..., help="Recording URL from 'sophonic zoom transcripts'"),
     title: Optional[str] = typer.Option(None, "--title"),
     date: Optional[str] = typer.Option(None, "--date", help="YYYY-MM-DD"),
 ):
     """Fetch a Zoom transcript and file it as an Obsidian meeting note."""
-    from akashic.config import load_config
+    from sophonic.config import load_config
     if not load_config().features.zoom:
         console.print("[red]Zoom integration is disabled in config.[/red]")
         raise typer.Exit(1)
-    from akashic.tools.zoom import save_transcript
+    from sophonic.tools.zoom import save_transcript
     result = save_transcript(url, title=title, recorded_date=date)
     if "needs_auth" in result:
         console.print(f"[yellow]Not authenticated. Run:[/yellow] {result['run']}")
@@ -244,7 +244,7 @@ app.add_typer(auth_app, name="auth")
 @auth_app.command("google")
 def auth_google():
     """Run Google OAuth flow (opens browser)."""
-    from akashic.google_auth import get_credentials
+    from sophonic.google_auth import get_credentials
     creds = get_credentials()
     console.print("[green]Google authentication successful.[/green]")
 
@@ -252,7 +252,7 @@ def auth_google():
 @auth_app.command("slack")
 def auth_slack():
     """Open browser to log in to Slack (saves session for future headless use)."""
-    from akashic.browser import open_auth_browser
+    from sophonic.browser import open_auth_browser
     asyncio.get_event_loop().run_until_complete(
         open_auth_browser("slack", "https://app.slack.com")
     )
@@ -262,7 +262,7 @@ def auth_slack():
 @auth_app.command("zoom")
 def auth_zoom():
     """Open browser to log in to Zoom (saves session for future headless use)."""
-    from akashic.browser import open_auth_browser
+    from sophonic.browser import open_auth_browser
     asyncio.get_event_loop().run_until_complete(
         open_auth_browser("zoom", "https://zoom.us/signin")
     )

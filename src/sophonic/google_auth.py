@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from akashic.config import config_dir, load_config
+from sophonic.config import config_dir, load_config
 
 
 def _token_path() -> Path:

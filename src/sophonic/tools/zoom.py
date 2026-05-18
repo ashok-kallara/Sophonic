@@ -9,9 +9,9 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from akashic.browser import run_async
+from sophonic.browser import run_async
 
-_NEEDS_AUTH = {"needs_auth": True, "run": "akashic auth zoom"}
+_NEEDS_AUTH = {"needs_auth": True, "run": "sophonic auth zoom"}
 
 _SELECTORS = {
     # Recording list page
@@ -61,7 +61,7 @@ def _parse_recording_date(raw: str) -> date | None:
 
 
 async def _list_recordings_async(recordings_url: str, since_days: int) -> list[dict[str, Any]]:
-    from akashic.browser import persistent_browser
+    from sophonic.browser import persistent_browser
 
     async with persistent_browser("zoom") as ctx:
         page = await ctx.new_page()
@@ -102,7 +102,7 @@ async def _list_recordings_async(recordings_url: str, since_days: int) -> list[d
 
 async def _fetch_transcript_async(recording_url: str) -> dict[str, Any]:
     """Navigate to a recording detail page and extract the transcript text."""
-    from akashic.browser import persistent_browser
+    from sophonic.browser import persistent_browser
 
     async with persistent_browser("zoom") as ctx:
         page = await ctx.new_page()
@@ -136,7 +136,7 @@ async def _fetch_transcript_async(recording_url: str) -> dict[str, Any]:
 
 def transcripts(since_days: int = 7) -> list[dict[str, Any]]:
     """List recent Zoom recordings from the web portal."""
-    from akashic.config import load_config
+    from sophonic.config import load_config
     url = load_config().zoom.recordings_url
     return run_async(_list_recordings_async(url, since_days))
 
@@ -156,7 +156,7 @@ def save_transcript(
     Returns the path of the saved note and a backlink confirmation.
     The day's daily note gets a backlink under ## Notes.
     """
-    from akashic.tools.obsidian import save_meeting_note
+    from sophonic.tools.obsidian import save_meeting_note
 
     data = transcript(recording_url)
     if "needs_auth" in data:

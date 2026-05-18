@@ -5,7 +5,16 @@
       "Bash(uv init *)",
       "Bash(uv add *)",
       "Bash(uv run *)",
-      "Bash(AKASHIC_VAULT=/Users/ghar-mac/Documents/Obsidian/ak-work uv run *)"
+      "Bash(AKASHIC_VAULT=/Users/ghar-mac/Documents/Obsidian/ak-work uv run *)",
+      "Bash(git mv *)",
+      "Bash(sed -i '' \"s/name=\\\\\"akashic\\\\\"/name=\\\\\"sophonic\\\\\"/\" src/sophonic/cli.py)",
+      "Bash(sed -i '' \"s/from 'akashic zoom transcripts'/from 'sophonic zoom transcripts'/\" src/sophonic/cli.py)",
+      "Bash(sed -i '' 's|~/.akashic/config.toml|~/.sophonic/config.toml|g' src/sophonic/browser.py)",
+      "Bash(sed -i '' 's|\\\\[akashic\\\\]|\\\\[sophonic\\\\]|g' src/sophonic/browser.py)",
+      "Bash(sed -i '' 's|akashic auth slack|sophonic auth slack|g' src/sophonic/tools/slack_web.py)",
+      "Bash(sed -i '' 's|akashic auth zoom|sophonic auth zoom|g' src/sophonic/tools/zoom.py)",
+      "Bash(sed -i '' 's|akashic-mcp server|sophonic-mcp server|g' src/sophonic/mcp_server.py)",
+      "Bash(uv sync *)"
     ]
   }
 }
