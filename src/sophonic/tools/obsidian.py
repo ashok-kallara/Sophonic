@@ -16,27 +16,19 @@ _INCOMPLETE_RE = re.compile(r"^- \[ \] .+", re.MULTILINE)
 _DUE_RE = re.compile(r"📅\s*(\d{4}-\d{2}-\d{2})")
 _DONE_RE = re.compile(r"^- \[x\] .+", re.MULTILINE)
 
-_DAILY_TEMPLATE = """\
-# {title}
-#sophonic
-
-## Tasks
-
-## Notes
-
-"""
-
-
 # ── Daily note helpers ────────────────────────────────────────────────────────
 
 def ensure_daily_note(for_date: date | None = None) -> Path:
     """Return path to the daily note, creating it from template if missing."""
+    from sophonic.skills import template as _template
     path = daily_note_path(for_date)
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         d = for_date or date.today()
-        title = f"DAILY {d.isoformat()}"
-        path.write_text(_DAILY_TEMPLATE.format(title=title), encoding="utf-8")
+        path.write_text(
+            _template("obsidian", "daily", date=f"DAILY {d.isoformat()}"),
+            encoding="utf-8",
+        )
     return path
 
 
@@ -318,9 +310,15 @@ def save_meeting_note(
     d = recorded_at or date.today()
     filename = f"{d.isoformat()} - {title}.md"
     rel_path = f"{load_config().vault.meetings_dir}/{filename}"
-    from sophonic.config import load_config as _cfg
-    frontmatter = f"---\nsource: {source}\nrecorded_at: {d.isoformat()}\ntags: [sophonic]\n---\n\n"
-    write_note(rel_path, frontmatter + f"# {title}\n\n" + content)
+    from sophonic.skills import template as _template
+    note_content = _template(
+        "obsidian", "meeting",
+        source=source,
+        recorded_at=d.isoformat(),
+        title=title,
+        content=content,
+    )
+    write_note(rel_path, note_content)
 
     # Backlink in today's daily note
     backlink = f"- [[{rel_path.removesuffix('.md')}]]"
