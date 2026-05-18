@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
+from mcp.server.fastmcp import FastMCP
+
 from sophonic import skills as _skills
 from sophonic.tools import build_registry
-
-# Imported lazily so tests can patch sophonic.mcp_server.FastMCP.
-# The guard prevents reload() from overwriting a patched value.
-if "FastMCP" not in dir():
-    from mcp.server.fastmcp import FastMCP  # noqa: F401
 
 
 def main() -> None:

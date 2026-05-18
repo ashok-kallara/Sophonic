@@ -60,8 +60,7 @@ def test_tool_names_are_namespaced(use_fixture_vault):
 
 def test_mcp_instructions_contains_skill_index(use_fixture_vault):
     """The FastMCP server's instructions= should include skill names."""
-    from unittest.mock import patch, MagicMock
-    from sophonic import skills as _skills
+    from sophonic import skills as _skills, mcp_server
 
     fake_skills = [
         _skills.SkillMeta(name="gcal", description="Calendar events", tools=[], body="gcal body"),
@@ -83,10 +82,7 @@ def test_mcp_instructions_contains_skill_index(use_fixture_vault):
 
     with patch("sophonic.mcp_server.FastMCP", FakeMCP), \
          patch.object(_skills, "discover", return_value=fake_skills), \
-         patch("sophonic.tools.build_registry", return_value={}):
-        from sophonic import mcp_server
-        import importlib
-        importlib.reload(mcp_server)
+         patch("sophonic.mcp_server.build_registry", return_value={}):
         mcp_server.main()
 
     assert "gcal" in captured["instructions"]
@@ -95,8 +91,7 @@ def test_mcp_instructions_contains_skill_index(use_fixture_vault):
 
 def test_mcp_skill_load_tool_registered(use_fixture_vault):
     """skill_load should be registered as a tool in the MCP server."""
-    from unittest.mock import patch, MagicMock
-    from sophonic import skills as _skills
+    from sophonic import skills as _skills, mcp_server
 
     fake_skills = [
         _skills.SkillMeta(name="gcal", description="desc", tools=[], body=""),
@@ -118,10 +113,7 @@ def test_mcp_skill_load_tool_registered(use_fixture_vault):
 
     with patch("sophonic.mcp_server.FastMCP", FakeMCP), \
          patch.object(_skills, "discover", return_value=fake_skills), \
-         patch("sophonic.tools.build_registry", return_value={}):
-        from sophonic import mcp_server
-        import importlib
-        importlib.reload(mcp_server)
+         patch("sophonic.mcp_server.build_registry", return_value={}):
         mcp_server.main()
 
     assert "skill_load" in registered_tools
