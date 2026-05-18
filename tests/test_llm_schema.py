@@ -54,7 +54,7 @@ def test_schema_description_from_docstring():
     assert tools[0]["description"] == "Sample tool for schema testing."
 
 
-def test_build_system_prompt_contains_skill_index(monkeypatch):
+def test_build_system_prompt_contains_skill_index():
     """_build_system_prompt() should include the skill index."""
     from unittest.mock import patch
     from sophonic import skills as _skills
@@ -70,7 +70,7 @@ def test_build_system_prompt_contains_skill_index(monkeypatch):
     assert "Calendar events" in prompt
 
 
-def test_skill_load_in_tools_list(monkeypatch):
+def test_skill_load_in_tools_list():
     """ask() should include skill_load in the tool definitions sent to Claude."""
     from unittest.mock import MagicMock, patch
     from sophonic import llm, skills as _skills

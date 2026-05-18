@@ -114,6 +114,7 @@ def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
     tools = _build_tools(reg)
 
     messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
+    system_prompt = _build_system_prompt()
 
     while True:
         response = client.messages.create(
@@ -122,7 +123,7 @@ def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
             system=[
                 {
                     "type": "text",
-                    "text": _build_system_prompt(),
+                    "text": system_prompt,
                     "cache_control": {"type": "ephemeral"},
                 }
             ],
