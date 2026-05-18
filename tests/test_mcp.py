@@ -56,3 +56,72 @@ def test_tool_names_are_namespaced(use_fixture_vault):
     prefixes = {name.split("_")[0] for name in reg}
     # All tools should be in one of the known namespaces
     assert prefixes <= {"obsidian", "gcal", "gmail", "slack", "zoom", "reminder"}
+
+
+def test_mcp_instructions_contains_skill_index(use_fixture_vault):
+    """The FastMCP server's instructions= should include skill names."""
+    from unittest.mock import patch, MagicMock
+    from sophonic import skills as _skills
+
+    fake_skills = [
+        _skills.SkillMeta(name="gcal", description="Calendar events", tools=[], body="gcal body"),
+    ]
+
+    captured = {}
+
+    class FakeMCP:
+        def __init__(self, name, instructions=""):
+            captured["instructions"] = instructions
+        def add_tool(self, fn, name, description=""):
+            pass
+        def prompt(self, name, description=""):
+            def decorator(fn):
+                return fn
+            return decorator
+        def run(self, transport):
+            pass
+
+    with patch("sophonic.mcp_server.FastMCP", FakeMCP), \
+         patch.object(_skills, "discover", return_value=fake_skills), \
+         patch("sophonic.tools.build_registry", return_value={}):
+        from sophonic import mcp_server
+        import importlib
+        importlib.reload(mcp_server)
+        mcp_server.main()
+
+    assert "gcal" in captured["instructions"]
+    assert "Calendar events" in captured["instructions"]
+
+
+def test_mcp_skill_load_tool_registered(use_fixture_vault):
+    """skill_load should be registered as a tool in the MCP server."""
+    from unittest.mock import patch, MagicMock
+    from sophonic import skills as _skills
+
+    fake_skills = [
+        _skills.SkillMeta(name="gcal", description="desc", tools=[], body=""),
+    ]
+
+    registered_tools = {}
+
+    class FakeMCP:
+        def __init__(self, name, instructions=""):
+            pass
+        def add_tool(self, fn, name, description=""):
+            registered_tools[name] = fn
+        def prompt(self, name, description=""):
+            def decorator(fn):
+                return fn
+            return decorator
+        def run(self, transport):
+            pass
+
+    with patch("sophonic.mcp_server.FastMCP", FakeMCP), \
+         patch.object(_skills, "discover", return_value=fake_skills), \
+         patch("sophonic.tools.build_registry", return_value={}):
+        from sophonic import mcp_server
+        import importlib
+        importlib.reload(mcp_server)
+        mcp_server.main()
+
+    assert "skill_load" in registered_tools
