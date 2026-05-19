@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-import pytest
-
 from sophonic.config import Config, FeaturesConfig, GitLabConfig
 
 
@@ -37,9 +35,11 @@ def test_gitlab_token_env_var(monkeypatch):
     from sophonic.config import load_config
     monkeypatch.setenv("GITLAB_TOKEN", "glpat-test-token")
     load_config.cache_clear()
-    cfg = load_config()
-    assert cfg.gitlab.token == "glpat-test-token"
-    load_config.cache_clear()
+    try:
+        cfg = load_config()
+        assert cfg.gitlab.token == "glpat-test-token"
+    finally:
+        load_config.cache_clear()
 
 
 def test_build_registry_respects_obsidian_flag(monkeypatch):
@@ -47,19 +47,20 @@ def test_build_registry_respects_obsidian_flag(monkeypatch):
     monkeypatch.setenv("SOPHONIC_VAULT", "/tmp/sophonic_test")
     from sophonic.config import load_config
     load_config.cache_clear()
-
-    disabled_cfg = Config(
-        features=FeaturesConfig(
-            obsidian=False, reminders=False,
-            google=False, slack=False, zoom=False, gitlab=False,
+    try:
+        disabled_cfg = Config(
+            features=FeaturesConfig(
+                obsidian=False, reminders=False,
+                google=False, slack=False, zoom=False, gitlab=False,
+            )
         )
-    )
-    with patch("sophonic.tools.load_config", return_value=disabled_cfg), \
-         patch("sophonic.skills.validate"):
-        from sophonic.tools import _REGISTRY, build_registry
-        _REGISTRY.clear()
-        registry = build_registry()
+        with patch("sophonic.tools.load_config", return_value=disabled_cfg), \
+             patch("sophonic.skills.validate"):
+            from sophonic.tools import _REGISTRY, build_registry
+            _REGISTRY.clear()
+            registry = build_registry()
 
-    assert "obsidian_add_task" not in registry
-    assert "reminder_create" not in registry
-    load_config.cache_clear()
+        assert "obsidian_add_task" not in registry
+        assert "reminder_create" not in registry
+    finally:
+        load_config.cache_clear()
