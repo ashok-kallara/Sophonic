@@ -20,9 +20,12 @@ class VaultConfig(BaseModel):
 
 
 class FeaturesConfig(BaseModel):
+    obsidian: bool = True
+    reminders: bool = True
     google: bool = True
     slack: bool = True
     zoom: bool = True
+    gitlab: bool = False
 
 
 class GoogleConfig(BaseModel):
@@ -66,6 +69,12 @@ class LLMConfig(BaseModel):
     model: str = "claude-sonnet-4-6"
 
 
+class GitLabConfig(BaseModel):
+    url: str = ""
+    token: str = ""
+    default_project: str = ""
+
+
 class Config(BaseModel):
     vault: VaultConfig = VaultConfig()
     features: FeaturesConfig = FeaturesConfig()
@@ -74,6 +83,7 @@ class Config(BaseModel):
     slack: SlackConfig = SlackConfig()
     zoom: ZoomConfig = ZoomConfig()
     llm: LLMConfig = LLMConfig()
+    gitlab: GitLabConfig = GitLabConfig()
 
 
 @lru_cache(maxsize=1)
@@ -87,6 +97,9 @@ def load_config() -> Config:
     # Allow env overrides for the most common settings
     if vault_path := os.environ.get("SOPHONIC_VAULT"):
         raw.setdefault("vault", {})["path"] = vault_path
+
+    if gitlab_token := os.environ.get("GITLAB_TOKEN"):
+        raw.setdefault("gitlab", {})["token"] = gitlab_token
 
     return Config.model_validate(raw)
 
