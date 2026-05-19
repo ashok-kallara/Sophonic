@@ -8,11 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from sophonic.config import GitLabConfig
+from sophonic.tools.gitlab import build_tools
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _cfg(url: str = "https://gitlab.example.com", token: str = "glpat-abc", default_project: str = ""):
-    from sophonic.config import GitLabConfig
     return GitLabConfig(url=url, token=token, default_project=default_project)
 
 
@@ -42,8 +44,6 @@ def _tool_call_response(result: Any) -> MagicMock:
 
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_build_tools_discovers_tools_and_prefixes_names(mock_post):
-    from sophonic.tools.gitlab import build_tools
-
     mock_post.return_value = _tools_list_response([
         {"name": "list_issues", "description": "List issues"},
         {"name": "create_issue", "description": "Create an issue"},
@@ -58,8 +58,6 @@ def test_build_tools_discovers_tools_and_prefixes_names(mock_post):
 
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_build_tools_sets_doc_from_description(mock_post):
-    from sophonic.tools.gitlab import build_tools
-
     mock_post.return_value = _tools_list_response([
         {"name": "list_issues", "description": "List project issues"},
     ])
@@ -71,8 +69,6 @@ def test_build_tools_sets_doc_from_description(mock_post):
 
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_build_tools_discovery_uses_bearer_auth(mock_post):
-    from sophonic.tools.gitlab import build_tools
-
     mock_post.return_value = _tools_list_response([])
     build_tools(_cfg(token="glpat-mytoken"))
 
@@ -82,8 +78,6 @@ def test_build_tools_discovery_uses_bearer_auth(mock_post):
 
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_build_tools_discovery_posts_to_mcp_endpoint(mock_post):
-    from sophonic.tools.gitlab import build_tools
-
     mock_post.return_value = _tools_list_response([])
     build_tools(_cfg(url="https://gitlab.example.com/"))
 
@@ -96,8 +90,6 @@ def test_build_tools_discovery_posts_to_mcp_endpoint(mock_post):
 
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_tool_wrapper_passes_kwargs_as_arguments(mock_post):
-    from sophonic.tools.gitlab import build_tools
-
     mock_post.side_effect = [
         _tools_list_response([{"name": "list_issues", "description": "List issues"}]),
         _tool_call_response([{"iid": 1, "title": "Bug"}]),
@@ -115,8 +107,6 @@ def test_tool_wrapper_passes_kwargs_as_arguments(mock_post):
 
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_tool_wrapper_returns_result_field(mock_post):
-    from sophonic.tools.gitlab import build_tools
-
     expected = [{"iid": 42, "title": "My issue"}]
     mock_post.side_effect = [
         _tools_list_response([{"name": "get_issue", "description": "Get issue"}]),
@@ -131,8 +121,6 @@ def test_tool_wrapper_returns_result_field(mock_post):
 
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_tool_wrapper_raises_on_mcp_error(mock_post):
-    from sophonic.tools.gitlab import build_tools
-
     error_resp = MagicMock()
     error_resp.json.return_value = {
         "jsonrpc": "2.0",
@@ -147,7 +135,7 @@ def test_tool_wrapper_raises_on_mcp_error(mock_post):
     ]
 
     tools = build_tools(_cfg())
-    with pytest.raises(RuntimeError, match="Invalid project"):
+    with pytest.raises(RuntimeError, match="GitLab MCP error"):
         tools["gitlab_list_issues"](project="bad/project")
 
 
@@ -156,7 +144,6 @@ def test_tool_wrapper_raises_on_mcp_error(mock_post):
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_build_tools_connect_error_returns_empty_dict(mock_post):
     import httpx
-    from sophonic.tools.gitlab import build_tools
 
     mock_post.side_effect = httpx.ConnectError("Connection refused")
 
@@ -171,7 +158,6 @@ def test_build_tools_connect_error_returns_empty_dict(mock_post):
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_build_tools_http_error_returns_empty_dict(mock_post):
     import httpx
-    from sophonic.tools.gitlab import build_tools
 
     resp = MagicMock()
     resp.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -188,8 +174,6 @@ def test_build_tools_http_error_returns_empty_dict(mock_post):
 
 
 def test_build_tools_empty_url_returns_empty_dict():
-    from sophonic.tools.gitlab import build_tools
-
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         tools = build_tools(_cfg(url=""))
@@ -199,8 +183,6 @@ def test_build_tools_empty_url_returns_empty_dict():
 
 
 def test_build_tools_empty_token_returns_empty_dict():
-    from sophonic.tools.gitlab import build_tools
-
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         tools = build_tools(_cfg(token=""))
@@ -214,9 +196,6 @@ def test_build_tools_empty_token_returns_empty_dict():
 @patch("sophonic.tools.gitlab.httpx.post")
 def test_build_registry_includes_gitlab_tools_when_enabled(mock_post, monkeypatch):
     """build_registry() registers gitlab_* tools when features.gitlab = True."""
-    monkeypatch.setenv("SOPHONIC_VAULT", "/tmp/sophonic_test")
-    monkeypatch.setenv("GITLAB_TOKEN", "glpat-test")
-
     from sophonic.config import Config, FeaturesConfig, GitLabConfig, load_config
     load_config.cache_clear()
 
