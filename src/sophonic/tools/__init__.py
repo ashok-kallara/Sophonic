@@ -21,26 +21,28 @@ def build_registry() -> dict[str, Callable[..., Any]]:
     """Rebuild registry from scratch based on enabled features."""
     _REGISTRY.clear()
 
-    from sophonic.tools import obsidian, reminders
+    cfg = load_config()
+    feat = cfg.features
 
-    for name, fn in obsidian.TOOLS.items():
-        register(name, fn)
-    for name, fn in reminders.TOOLS.items():
-        register(name, fn)
+    if feat.obsidian:
+        from sophonic.tools import obsidian
+        for name, fn in obsidian.TOOLS.items():
+            register(name, fn)
 
-    cfg = load_config().features
+    if feat.reminders:
+        from sophonic.tools import reminders
+        for name, fn in reminders.TOOLS.items():
+            register(name, fn)
 
-    if cfg.google:
+    if feat.google:
         try:
             from sophonic.tools import gcal, gmail
-            for name, fn in gcal.TOOLS.items():
-                register(name, fn)
-            for name, fn in gmail.TOOLS.items():
+            for name, fn in {**gcal.TOOLS, **gmail.TOOLS}.items():
                 register(name, fn)
         except ImportError:
             pass
 
-    if cfg.slack:
+    if feat.slack:
         try:
             from sophonic.tools import slack_web
             for name, fn in slack_web.TOOLS.items():
@@ -48,7 +50,7 @@ def build_registry() -> dict[str, Callable[..., Any]]:
         except ImportError:
             pass
 
-    if cfg.zoom:
+    if feat.zoom:
         try:
             from sophonic.tools import zoom
             for name, fn in zoom.TOOLS.items():
@@ -56,9 +58,12 @@ def build_registry() -> dict[str, Callable[..., Any]]:
         except ImportError:
             pass
 
-    registry = get_registry()
+    if feat.gitlab:
+        from sophonic.tools.gitlab import build_tools as _build_gitlab
+        for name, fn in _build_gitlab(cfg.gitlab).items():
+            register(name, fn)
 
+    registry = get_registry()
     from sophonic import skills
     skills.validate(registry)
-
     return registry
