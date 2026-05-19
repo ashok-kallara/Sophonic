@@ -31,6 +31,10 @@ A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE 
 - [MCP Server](#mcp-server)
   - [Registering in Claude Code](#registering-in-claude-code)
   - [Tool reference](#tool-reference)
+- [Skills System](#skills-system)
+  - [SKILL.md format](#skillmd-format)
+  - [User overrides](#user-overrides)
+  - [skill\_load tool](#skill_load-tool)
 - [Obsidian Conventions](#obsidian-conventions)
   - [Daily notes](#daily-notes)
   - [Task format](#task-format)
@@ -52,6 +56,7 @@ A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE 
 | **Gmail** | Lists unread messages, searches by Gmail query, fetches full threads. Read-only OAuth. |
 | **Slack** | Playwright-based web scraper: lists unread channels/DMs, searches Slack. Works when the Slack MCP is not available due to admin restrictions. Supports Chromium, Chrome, and Island browsers. |
 | **Zoom** | Playwright-based transcript scraper: lists recordings from the web portal, fetches transcript text, and files transcripts as Obsidian meeting notes under `Work/Meetings/` with a backlink in the day's daily note. |
+| **GitLab** | MCP proxy to a self-hosted GitLab instance (requires GitLab 17.3+). Search, create, and update issues and MRs. Check pipeline status and retry failed jobs. Search the project wiki. Auth via Personal Access Token. |
 
 ---
 
@@ -64,18 +69,24 @@ A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE 
                   └──────────────┬──────────────────────────┘
                                  │
                   ┌──────────────▼──────────────────────────┐
-                  │   sophonic.tools  (shared core)          │
+                  │   sophonic.skills  (behavior layer)      │
+                  │   SKILL.md per namespace · skill_load   │
+                  │   on-demand context · user overrides    │
+                  └──────────────┬──────────────────────────┘
+                                 │
+                  ┌──────────────▼──────────────────────────┐
+                  │   sophonic.tools  (mechanism layer)      │
                   │   obsidian · reminders · gcal · gmail   │
-                  │   slack_web · zoom                      │
+                  │   slack_web · zoom · gitlab (MCP proxy) │
                   └──────────────▲──────────────────────────┘
                                  │
                   ┌──────────────┴──────────────────────────┐
    Claude Code /  │   sophonic.mcp_server (FastMCP, stdio)   │
-   Cursor / IDE   │   22 namespaced tools                   │
+   Cursor / IDE   │   23 tools + skills as MCP Prompts      │
                   └─────────────────────────────────────────┘
 ```
 
-Both entry points share identical tool implementations — no duplicated logic. The MCP server exposes all tools as namespaced names (`obsidian_*`, `gcal_*`, `gmail_*`, `slack_*`, `zoom_*`, `reminder_*`) so `allowedTools` rules in Claude Code can target whole namespaces.
+Both entry points share identical tool and skill implementations — no duplicated logic. The MCP server exposes all tools as namespaced names (`obsidian_*`, `gcal_*`, `gmail_*`, `slack_*`, `zoom_*`, `reminder_*`) so `allowedTools` rules in Claude Code can target whole namespaces. Skills are additionally exposed as MCP Prompts, discoverable by any MCP-aware client.
 
 ---
 
@@ -122,6 +133,7 @@ Add to your shell profile so `sophonic ask` can find it:
 # ~/.zshrc or ~/.config/fish/config.fish
 export ANTHROPIC_API_KEY="sk-ant-..."
 export SOPHONIC_VAULT="/Users/you/Documents/Obsidian/your-vault"
+export GITLAB_TOKEN="glpat-..."          # Personal Access Token for GitLab MCP proxy
 ```
 
 ---
@@ -171,6 +183,15 @@ save_transcripts = true   # auto-file fetched transcripts as meeting notes
 
 [llm]
 model = "claude-sonnet-4-6"
+
+# GitLab — disabled by default; set url + token to enable
+[features]
+gitlab = true
+
+[gitlab]
+url             = "https://gitlab.company.com"
+token           = "glpat-xxxxxxxxxxxxxxxxxxxx"  # PAT with api scope; or set GITLAB_TOKEN env var
+default_project = "group/project"               # used when project not specified
 ```
 
 ### Vault settings
@@ -180,7 +201,7 @@ model = "claude-sonnet-4-6"
 
 ### Feature toggles
 
-Set any of `google`, `slack`, `zoom` to `false` to completely disable that integration — its Python modules won't be imported, its CLI subcommands won't appear, and its MCP tools won't be registered. Useful during initial setup or when an integration is broken.
+Set any flag to `false` to completely disable that integration — its Python modules won't be imported, its CLI subcommands won't appear, and its MCP tools won't be registered. Useful during initial setup or when an integration is broken. Available flags: `obsidian`, `reminders`, `google`, `slack`, `zoom`, `gitlab`.
 
 ### Browser engine (Slack & Zoom)
 
@@ -391,7 +412,7 @@ Once registered, Claude Code can call tools like `obsidian_add_task` directly wi
 
 ### Tool reference
 
-All 22 tools are available when all features are enabled. Disabled integrations contribute zero tools to the MCP manifest.
+All 23 tools are available when all non-GitLab features are enabled. With GitLab enabled, additional `gitlab_*` tools are registered dynamically based on what your GitLab instance exposes. Disabled integrations contribute zero tools to the MCP manifest.
 
 | Tool | Description |
 |---|---|
@@ -417,6 +438,92 @@ All 22 tools are available when all features are enabled. Disabled integrations 
 | `zoom_transcripts` | List recent Zoom recordings |
 | `zoom_transcript` | Fetch transcript text for a recording URL |
 | `zoom_save_transcript` | Fetch transcript and file it as an Obsidian meeting note |
+| `skill_load` | Load the full instructions for a named capability (e.g. `"obsidian"`, `"gcal"`). Call before using an unfamiliar set of tools. |
+| `gitlab_list_projects` | List accessible GitLab projects |
+| `gitlab_get_project` | Get project details |
+| `gitlab_list_issues` | List issues by state, label, or assignee |
+| `gitlab_get_issue` | Get full issue detail |
+| `gitlab_create_issue` | Create a new issue |
+| `gitlab_update_issue` | Update issue fields or close/reopen |
+| `gitlab_create_note` | Add a comment to an issue or MR |
+| `gitlab_list_merge_requests` | List MRs by state or author |
+| `gitlab_get_merge_request` | Get full MR detail including diff stats |
+| `gitlab_list_pipelines` | List pipelines by ref or status |
+| `gitlab_get_pipeline` | Get pipeline detail and job list |
+| `gitlab_retry_failed_ci_jobs` | Retry all failed jobs in a pipeline |
+| `gitlab_list_wiki_pages` | List wiki page slugs and titles |
+| `gitlab_get_wiki_page` | Get full Markdown content of a wiki page |
+
+---
+
+## Skills System
+
+Sophonic separates **mechanism** (Python code — OAuth, Playwright, filesystem) from **behavior** (prompts, descriptions, conventions). The behavior layer lives in `SKILL.md` files that follow the same format as Claude Code skills: YAML frontmatter + Markdown body.
+
+Each capability namespace has a paired skill file:
+
+```
+src/sophonic/skills/
+  obsidian/SKILL.md
+  reminders/SKILL.md
+  gcal/SKILL.md
+  gmail/SKILL.md
+  slack/SKILL.md
+  zoom/SKILL.md
+  gitlab/SKILL.md
+```
+
+The system prompt presented to the LLM contains only a compact **index** of skill names and descriptions (~30 tokens per skill). When the model needs to use a capability in depth, it calls `skill_load("obsidian")` to get the full body — conventions, parameter guidance, and when-to-use notes — on demand.
+
+### SKILL.md format
+
+```markdown
+---
+name: obsidian
+description: Obsidian vault operations — daily notes, tasks, and search. Trigger when the user mentions tasks, notes, vault, reminders, or meetings.
+tools: [obsidian_add_task, obsidian_list_tasks, obsidian_daily_note, ...]
+---
+
+# Obsidian
+
+You have these sophonic tools for Obsidian:
+
+- `obsidian_add_task(text, due?, priority?, tags?)` — appends a task under ## Tasks in today's daily note.
+...
+
+## Conventions
+
+- Task emoji format: `📅 YYYY-MM-DD` for due, `⏫/🔼/🔽` for priority.
+...
+
+## When to use
+
+Prefer obsidian tools any time the user mentions tasks, reminders, or their vault.
+```
+
+The `tools:` list in frontmatter is validated at startup — if any tool listed there is not registered in the tool registry, Sophonic raises an error on boot. This keeps skill files from drifting silently out of sync with the Python modules.
+
+### User overrides
+
+Drop a replacement `SKILL.md` at `~/.sophonic/skills/<name>/SKILL.md` to override any bundled skill without touching the repo:
+
+```
+~/.sophonic/skills/
+  obsidian/SKILL.md    ← your vault layout, your conventions
+```
+
+User files fully replace the bundled version (no merging). Templates (`*.md.j2`) work the same way: `~/.sophonic/skills/obsidian/templates/daily.md.j2` overrides the bundled daily-note template.
+
+### skill_load tool
+
+Both the CLI loop and the MCP server expose `skill_load` as a callable tool. The model calls it before using an unfamiliar namespace:
+
+```
+skill_load("obsidian")
+→ { "name": "obsidian", "body": "# Obsidian\n\n..." }
+```
+
+In Claude Code, MCP-registered skills are also available as first-class **MCP Prompts** — the `/prompts` list in the MCP inspector shows all skill names, and any MCP client that supports prompts can fetch them directly without calling `skill_load`.
 
 ---
 
@@ -508,6 +615,19 @@ sophonic/
 │   ├── llm.py                   # Anthropic client, prompt caching, tool-use loop
 │   ├── cli.py                   # Typer CLI app
 │   ├── mcp_server.py            # FastMCP stdio server
+│   ├── skills.py                # skill discovery, index, skill_load tool, template renderer
+│   ├── skills/                  # bundled SKILL.md files (one per capability namespace)
+│   │   ├── obsidian/
+│   │   │   ├── SKILL.md
+│   │   │   └── templates/
+│   │   │       ├── daily.md.j2      # daily note template (date variable)
+│   │   │       └── meeting.md.j2   # meeting note template
+│   │   ├── reminders/SKILL.md
+│   │   ├── gcal/SKILL.md
+│   │   ├── gmail/SKILL.md
+│   │   ├── slack/SKILL.md
+│   │   ├── zoom/SKILL.md
+│   │   └── gitlab/SKILL.md
 │   └── tools/
 │       ├── __init__.py          # build_registry() — feature-gated tool registration
 │       ├── obsidian.py          # vault read/write, task CRUD, rollover, search
@@ -515,7 +635,8 @@ sophonic/
 │       ├── gcal.py              # Google Calendar (events_today, events_range)
 │       ├── gmail.py             # Gmail (unread, search, thread)
 │       ├── slack_web.py         # Playwright Slack scraper (unread, search)
-│       └── zoom.py              # Playwright Zoom scraper (transcripts, save)
+│       ├── zoom.py              # Playwright Zoom scraper (transcripts, save)
+│       └── gitlab.py            # MCP proxy (httpx → GitLab /api/v4/mcp)
 └── tests/
     ├── conftest.py              # use_fixture_vault autouse fixture
     ├── fixtures/vault/          # throwaway vault for tests
@@ -527,7 +648,10 @@ sophonic/
     ├── test_slack.py
     ├── test_zoom.py
     ├── test_llm_schema.py
-    └── test_mcp.py
+    ├── test_mcp.py
+    ├── test_skills.py
+    ├── test_config.py
+    └── test_gitlab.py
 ```
 
 ---
@@ -537,9 +661,9 @@ sophonic/
 ### Running tests
 
 ```bash
-uv run pytest               # all 47 tests
-uv run pytest -v            # verbose
-uv run pytest tests/test_obsidian.py   # single file
+uv run -- python -m pytest               # all 86 tests
+uv run -- python -m pytest -v            # verbose
+uv run -- python -m pytest tests/test_obsidian.py   # single file
 ```
 
 All integration tests (Google, Slack, Zoom) use mocked Playwright and mocked Google API clients — no real network calls, no credentials needed.
@@ -554,14 +678,36 @@ All integration tests (Google, Slack, Zoom) use mocked Playwright and mocked Goo
    }
    ```
 
-2. Add a feature flag to `FeaturesConfig` in `config.py`:
+2. Create `src/sophonic/skills/<name>/SKILL.md` with frontmatter listing those exact tool names:
+
+   ```markdown
+   ---
+   name: myintegration
+   description: One sentence describing what this capability does and when to trigger it.
+   tools: [myintegration_action]
+   ---
+
+   # My Integration
+
+   You have these sophonic tools for My Integration:
+
+   - `myintegration_action(param)` — what it does and when to call it.
+
+   ## When to use
+
+   Call these tools when the user asks about ...
+   ```
+
+   The `tools:` list is validated at startup — Sophonic raises an error if any listed tool is not registered.
+
+3. Add a feature flag to `FeaturesConfig` in `config.py`:
 
    ```python
    class FeaturesConfig(BaseModel):
        myintegration: bool = True
    ```
 
-3. Register it in `tools/__init__.py` inside `build_registry()`:
+4. Register it in `tools/__init__.py` inside `build_registry()`:
 
    ```python
    if cfg.myintegration:
@@ -570,7 +716,7 @@ All integration tests (Google, Slack, Zoom) use mocked Playwright and mocked Goo
            register(name, fn)
    ```
 
-4. Add CLI subcommands in `cli.py` if needed.
-5. Write tests with mocked external calls in `tests/test_<name>.py`.
+5. Add CLI subcommands in `cli.py` if needed.
+6. Write tests with mocked external calls in `tests/test_<name>.py`.
 
-The MCP server picks up new tools automatically via `build_registry()` — no changes to `mcp_server.py` needed.
+The MCP server picks up new tools automatically via `build_registry()` and exposes the new SKILL.md as an MCP Prompt — no changes to `mcp_server.py` or `llm.py` needed.
