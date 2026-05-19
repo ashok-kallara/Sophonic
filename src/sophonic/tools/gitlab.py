@@ -89,7 +89,10 @@ def _make_caller(
         data = resp.json()
         if "error" in data:
             raise RuntimeError(f"GitLab MCP error: {data['error']}")
-        return data["result"]
+        result = data.get("result")
+        if result is None:
+            raise RuntimeError(f"Unexpected MCP response shape: {data!r}")
+        return result
 
     wrapper.__doc__ = description
     wrapper.__name__ = f"gitlab_{native_name}"

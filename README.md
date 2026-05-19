@@ -152,9 +152,12 @@ meetings_dir = "Work/Meetings" # Zoom transcripts filed here
 # Toggle integrations independently.
 # Disabled integrations skip their imports, CLI commands, and MCP tools.
 [features]
-google = true   # Google Calendar + Gmail
-slack  = true
-zoom   = true
+obsidian  = true
+reminders = true
+google    = true   # Google Calendar + Gmail
+slack     = true
+zoom      = true
+gitlab    = false  # enable once [gitlab] section is configured
 
 [google]
 client_secret_file = "~/.sophonic/google_client_secret.json"
@@ -183,10 +186,6 @@ save_transcripts = true   # auto-file fetched transcripts as meeting notes
 
 [llm]
 model = "claude-sonnet-4-6"
-
-# GitLab — disabled by default; set url + token to enable
-[features]
-gitlab = true
 
 [gitlab]
 url             = "https://gitlab.company.com"
