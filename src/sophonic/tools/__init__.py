@@ -44,8 +44,8 @@ def build_registry() -> dict[str, Callable[..., Any]]:
 
     if feat.slack:
         try:
-            from sophonic.tools import slack_web
-            for name, fn in slack_web.TOOLS.items():
+            from sophonic.tools import slack_local
+            for name, fn in slack_local.TOOLS.items():
                 register(name, fn)
         except ImportError:
             pass

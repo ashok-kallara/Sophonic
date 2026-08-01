@@ -1,0 +1,11 @@
+{
+  "name": "sophonic",
+  "description": "Obsidian-native AI assistant: daily notes, tasks, Google Calendar, Gmail, Slack, Zoom, and GitLab — exposed as MCP tools.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Ashok Kallarakuzhi",
+    "email": "k.ashok@gmail.com"
+  },
+  "homepage": "https://github.com/your-org/sophonic",
+  "keywords": ["obsidian", "mcp", "productivity", "calendar", "gmail", "slack", "zoom", "gitlab"]
+}

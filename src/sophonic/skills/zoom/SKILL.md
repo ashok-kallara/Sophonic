@@ -1,26 +1,29 @@
 ---
 name: zoom
-description: Fetch and save Zoom meeting transcripts from the Zoom web portal. Trigger when the user asks about a recent meeting recording or transcript.
+description: List and save Zoom's AI-generated meeting notes (AI Companion). Trigger when the user asks about a recent meeting, its notes, action items, or summary.
 tools:
-  - zoom_transcripts
-  - zoom_transcript
-  - zoom_save_transcript
+  - zoom_notes
+  - zoom_note
+  - zoom_save_note
 ---
 
-# Zoom
+# Zoom (AI meeting notes)
 
-Browser-scraper access to the Zoom web portal for meeting transcripts.
+Reads Zoom's AI Companion meeting notes from the signed-in web session (Zoom Docs).
+No cloud recording required — Zoom auto-generates a Note for each meeting.
 
 ## Tools
 
-- `zoom_transcripts(limit)` — List recent recorded meetings: `{meeting_id, topic, date}`.
-- `zoom_transcript(meeting_id)` — Return the full transcript text for a meeting.
-- `zoom_save_transcript(meeting_id, title)` — Fetch transcript and save it as an Obsidian meeting note via `obsidian_save_meeting_note`.
+- `zoom_notes(limit)` — List recent AI meeting notes: `{id, title, meeting, date, link, is_meeting_note}`.
+- `zoom_note(doc_id)` — Return the note's content (Key Outcomes, Decisions, Action Items, …).
+- `zoom_save_note(doc_id, title)` — Fetch a note and save it as an Obsidian meeting note (backlinked in the daily note).
 
 ## Auth
 
-If `{"needs_auth": true}` is returned, tell the user to run `sophonic auth zoom`.
+If `{"needs_auth": true}` is returned, the Zoom web session cookies are missing/expired.
+Tell the user to log in to zoom.us and run `sophonic config set-secret ZOOM_COOKIES --stdin`.
 
 ## When to use
 
-Use when the user asks about a recent meeting or wants to review what was discussed. Always save with `zoom_save_transcript` so transcripts are searchable in the vault later.
+Use when the user asks about a recent meeting, its summary, decisions, or action items.
+Call `zoom_notes` to find the meeting, then `zoom_save_note` (or `zoom_note`) for its content.

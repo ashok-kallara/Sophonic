@@ -74,6 +74,7 @@ def test_skill_load_in_tools_list():
     """ask() should include skill_load in the tool definitions sent to Claude."""
     from unittest.mock import MagicMock, patch
     from sophonic import llm, skills as _skills
+    from sophonic.config import Config
 
     fake_skills = [
         _skills.SkillMeta(name="gcal", description="desc", tools=[], body=""),
@@ -93,7 +94,10 @@ def test_skill_load_in_tools_list():
     class FakeClient:
         messages = FakeMessages()
 
+    # Force the default Anthropic provider so the test is hermetic and does not
+    # read the developer's real ~/.sophonic/config.toml (which may select openai).
     with patch.object(_skills, "discover", return_value=fake_skills), \
+         patch("sophonic.llm.load_config", return_value=Config()), \
          patch("sophonic.llm._client", return_value=FakeClient()), \
          patch("sophonic.tools.build_registry", return_value={}):
         llm.ask("hello")

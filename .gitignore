@@ -8,3 +8,19 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Test / tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets & local env (the example is the tracked template)
+.env
+.env.*
+!.env.example
+
+# Claude Code local settings (machine-local, not shared)
+.claude/settings.local.json
+
+# macOS
+.DS_Store
