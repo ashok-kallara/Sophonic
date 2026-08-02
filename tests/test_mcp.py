@@ -20,8 +20,8 @@ def test_all_tools_registered_when_all_features_on(use_fixture_vault):
     assert "gcal_events_today" in names
     assert "gmail_unread" in names
     assert "slack_unread" in names
-    assert "zoom_transcripts" in names
-    assert "zoom_save_transcript" in names
+    assert "zoom_notes" in names
+    assert "zoom_save_note" in names
 
 
 def test_google_tools_absent_when_feature_disabled(use_fixture_vault, monkeypatch):

@@ -12,7 +12,7 @@ from typing import Any, Union, get_args, get_origin
 
 import anthropic
 
-from sophonic.config import load_config
+from sophonic.config import OPENAI_COMPATIBLE_PROVIDERS, load_config, resolve_llm_api_key
 
 def _build_system_prompt() -> str:
     """Build system prompt from base preamble + live skill index."""
@@ -97,29 +97,77 @@ def _build_tools(registry: dict[str, Any]) -> list[dict[str, Any]]:
     return tools
 
 
+def _build_openai_tools(registry: dict[str, Any]) -> list[dict[str, Any]]:
+    """Wrap the Anthropic-format tools as OpenAI function tools (same JSON Schema)."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in _build_tools(registry)
+    ]
+
+
+def _execute_tool(registry: dict[str, Any], name: str, tool_input: dict[str, Any]) -> Any:
+    """Look up and call a tool by name, returning its result or an error dict."""
+    fn = registry.get(name)
+    if fn is None:
+        return {"error": f"Unknown tool: {name}"}
+    try:
+        return fn(**tool_input)
+    except Exception as exc:  # surface tool failures back to the model
+        return {"error": str(exc)}
+
+
 def _client() -> anthropic.Anthropic:
-    key = os.environ.get("ANTHROPIC_API_KEY")
-    return anthropic.Anthropic(api_key=key)
+    return anthropic.Anthropic(api_key=resolve_llm_api_key("anthropic"))
+
+
+def _openai_client(cfg: Any):
+    """Build an OpenAI-compatible client. Lazily imports the optional `openai` package."""
+    try:
+        import openai
+    except ImportError as exc:  # openai is a core dependency; a miss means a broken install
+        raise RuntimeError(
+            "The 'openai' package failed to import — reinstall Sophonic "
+            "(`uv sync`, or `uv tool install --force .`)."
+        ) from exc
+    return openai.OpenAI(
+        api_key=resolve_llm_api_key(cfg.provider),
+        base_url=cfg.api_base or None,
+    )
 
 
 def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
-    """Run a prompt through Claude with the tool-use loop. Return the final text."""
+    """Run a prompt through the configured LLM with the tool-use loop. Return the final text."""
     from sophonic.tools import build_registry
     from sophonic import skills as _skills
 
     reg = registry or build_registry()
     reg = {**reg, "skill_load": _skills.skill_load}
-    client = _client()
     cfg = load_config().llm
-    tools = _build_tools(reg)
-
-    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
     system_prompt = _build_system_prompt()
+
+    # openai and litellm both speak the OpenAI wire format (LiteLLM proxy is compatible).
+    if cfg.provider in OPENAI_COMPATIBLE_PROVIDERS:
+        return _ask_openai(prompt, reg, system_prompt, cfg)
+    return _ask_anthropic(prompt, reg, system_prompt, cfg)
+
+
+def _ask_anthropic(prompt: str, reg: dict[str, Any], system_prompt: str, cfg: Any) -> str:
+    """Anthropic native tool-use loop with prompt caching."""
+    client = _client()
+    tools = _build_tools(reg)
+    messages: list[dict[str, Any]] = [{"role": "user", "content": prompt}]
 
     while True:
         response = client.messages.create(
             model=cfg.model,
-            max_tokens=4096,
+            max_tokens=cfg.max_tokens,
             system=[
                 {
                     "type": "text",
@@ -145,17 +193,57 @@ def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
         messages.append({"role": "assistant", "content": response.content})
         tool_results = []
         for tu in tool_uses:
-            fn = reg.get(tu["name"])
-            if fn is None:
-                result: Any = {"error": f"Unknown tool: {tu['name']}"}
-            else:
-                try:
-                    result = fn(**tu["input"])
-                except Exception as exc:
-                    result = {"error": str(exc)}
+            result = _execute_tool(reg, tu["name"], tu["input"])
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": tu["id"],
                 "content": json.dumps(result, default=str),
             })
         messages.append({"role": "user", "content": tool_results})
+
+
+def _ask_openai(prompt: str, reg: dict[str, Any], system_prompt: str, cfg: Any) -> str:
+    """OpenAI-compatible chat-completions tool-use loop (works with any OpenAI-format endpoint)."""
+    client = _openai_client(cfg)
+    tools = _build_openai_tools(reg)
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+
+    while True:
+        response = client.chat.completions.create(
+            model=cfg.model,
+            max_tokens=cfg.max_tokens,
+            messages=messages,
+            tools=tools,  # type: ignore[arg-type]
+        )
+        msg = response.choices[0].message
+        tool_calls = msg.tool_calls or []
+
+        if not tool_calls:
+            return msg.content or ""
+
+        messages.append({
+            "role": "assistant",
+            "content": msg.content or "",
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+                }
+                for tc in tool_calls
+            ],
+        })
+        for tc in tool_calls:
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            result = _execute_tool(reg, tc.function.name, args)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc.id,
+                "content": json.dumps(result, default=str),
+            })

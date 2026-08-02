@@ -33,6 +33,7 @@ def _island_executable() -> str:
 async def persistent_browser(
     integration: str,
     headless: bool | None = None,
+    cookies: list[dict] | None = None,
 ) -> AsyncGenerator:
     """
     Yield a Playwright BrowserContext backed by a persistent user-data-dir.
@@ -41,6 +42,8 @@ async def persistent_browser(
     Subsequent calls run headless unless headless=False is forced.
 
     integration: "slack" | "zoom"
+    cookies: optional list of Playwright cookie dicts seeded into the context
+        (used to reuse a session captured elsewhere, e.g. pasted Zoom cookies).
     """
     from playwright.async_api import async_playwright
 
@@ -49,7 +52,8 @@ async def persistent_browser(
     profile = _profile_dir(integration, engine)
 
     has_session = any(profile.iterdir()) if profile.exists() else False
-    use_headless = headless if headless is not None else has_session
+    # With seeded cookies we already have a session, so default to headless.
+    use_headless = headless if headless is not None else (has_session or bool(cookies))
 
     launch_kwargs: dict = {
         "user_data_dir": str(profile),
@@ -58,18 +62,33 @@ async def persistent_browser(
     }
 
     async with async_playwright() as pw:
-        if engine == "chromium":
-            ctx = await pw.chromium.launch_persistent_context(**launch_kwargs)
-        elif engine == "chrome":
-            ctx = await pw.chromium.launch_persistent_context(
-                channel="chrome", **launch_kwargs
-            )
-        elif engine == "island":
-            ctx = await pw.chromium.launch_persistent_context(
-                executable_path=_island_executable(), **launch_kwargs
-            )
-        else:
-            raise ValueError(f"Unknown engine: {engine!r}")
+        try:
+            if engine == "chromium":
+                ctx = await pw.chromium.launch_persistent_context(**launch_kwargs)
+            elif engine == "chrome":
+                ctx = await pw.chromium.launch_persistent_context(
+                    channel="chrome", **launch_kwargs
+                )
+            elif engine == "island":
+                ctx = await pw.chromium.launch_persistent_context(
+                    executable_path=_island_executable(), **launch_kwargs
+                )
+            else:
+                raise ValueError(f"Unknown engine: {engine!r}")
+        except Exception as exc:
+            if engine == "island":
+                raise RuntimeError(
+                    "Island could not be automated. Enterprise policy blocks the DevTools "
+                    "remote-debugging interface Playwright needs ('DevTools remote debugging "
+                    "is disallowed by the system admin'), so Sophonic cannot drive Island. "
+                    "Switch the engine (`sophonic config set browser."
+                    f"{integration}.engine chromium`) — note this only works if your Okta/SSO "
+                    "login also works outside Island — or use an API-based integration instead."
+                ) from exc
+            raise
+
+        if cookies:
+            await ctx.add_cookies(cookies)
 
         try:
             yield ctx
@@ -80,8 +99,19 @@ async def persistent_browser(
 async def open_auth_browser(integration: str, url: str) -> None:
     """Open a headed browser at url so the user can log in once."""
     async with persistent_browser(integration, headless=False) as ctx:
-        page = await ctx.new_page()
-        await page.goto(url)
+        # A persistent context already has an initial page. Reuse it and bring it to
+        # front so we drive the window the user actually sees — some managed browsers
+        # open new_page() in the background (or a separate window).
+        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+        await page.bring_to_front()
+        try:
+            await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
+            print(f"[sophonic] Opened {page.url}")
+        except Exception as exc:
+            print(
+                f"[sophonic] Could not auto-load {url}: {exc}\n"
+                f"[sophonic] Navigate to {url} manually in the open window."
+            )
         await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: input(

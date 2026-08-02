@@ -1,48 +1,21 @@
 # Sophonic
 
-A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE — no web UI, no cloud dashboard. It reads and writes your Obsidian vault directly, pulls live context from Google Calendar, Gmail, Slack, and Zoom, and is available both as a CLI (`sophonic`) and as an MCP server (`sophonic-mcp`) you can register in Claude Code, Cursor, or any IDE that supports MCP.
+A lightweight, Obsidian-native AI assistant for your terminal and IDE — no web UI, no cloud dashboard. It reads and writes your Obsidian vault directly, pulls live context from Google Calendar, Gmail, Slack, and Zoom, and runs both as a CLI (`sophonic`) and as an MCP server (`sophonic-mcp`) you can register in Claude Code, Cursor, or any MCP-aware IDE.
 
----
-
-## Table of Contents
+## Contents
 
 - [Capabilities](#capabilities)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
 - [Installation](#installation)
 - [Configuration](#configuration)
-  - [Vault settings](#vault-settings)
-  - [Feature toggles](#feature-toggles)
-  - [Browser engine (Slack & Zoom)](#browser-engine-slack--zoom)
-  - [Google OAuth](#google-oauth)
-  - [LLM model](#llm-model)
 - [Authentication](#authentication)
-  - [Google (Calendar + Gmail)](#google-calendar--gmail)
-  - [Slack](#slack)
-  - [Zoom](#zoom)
 - [CLI Reference](#cli-reference)
-  - [Daily workflow](#daily-workflow)
-  - [Reminders & tasks](#reminders--tasks)
-  - [Mail](#mail)
-  - [Slack](#slack-1)
-  - [Zoom](#zoom-1)
-  - [AI assistant (free-form)](#ai-assistant-free-form)
-  - [Auth](#auth)
 - [MCP Server](#mcp-server)
-  - [Registering in Claude Code](#registering-in-claude-code)
-  - [Tool reference](#tool-reference)
 - [Skills System](#skills-system)
-  - [SKILL.md format](#skillmd-format)
-  - [User overrides](#user-overrides)
-  - [skill\_load tool](#skill_load-tool)
 - [Obsidian Conventions](#obsidian-conventions)
-  - [Daily notes](#daily-notes)
-  - [Task format](#task-format)
-  - [Meeting notes](#meeting-notes)
 - [Project Structure](#project-structure)
 - [Development](#development)
-  - [Running tests](#running-tests)
-  - [Adding a new integration](#adding-a-new-integration)
 
 ---
 
@@ -50,13 +23,13 @@ A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE 
 
 | Integration | What it does |
 |---|---|
-| **Obsidian** | Creates and reads per-day daily notes (`Daily/DAILY-YYYY-MM-DD.md`). Adds tasks under `## Tasks` in today's note using the [Obsidian Tasks](https://obsidian-tasks-group.github.io/obsidian-tasks/) emoji format. Lists tasks by due date, rolls over incomplete items from the previous day, marks tasks complete. Full-text vault search via ripgrep. |
-| **Reminders** | Parses natural-language phrases ("send report next Friday", "call dentist in 3 days") into Tasks-plugin-formatted task lines with `📅 YYYY-MM-DD` due dates, appended to today's daily note. |
-| **Google Calendar** | Lists events for today or any date range via read-only OAuth. |
-| **Gmail** | Lists unread messages, searches by Gmail query, fetches full threads. Read-only OAuth. |
-| **Slack** | Playwright-based web scraper: lists unread channels/DMs, searches Slack. Works when the Slack MCP is not available due to admin restrictions. Supports Chromium, Chrome, and Island browsers. |
-| **Zoom** | Playwright-based transcript scraper: lists recordings from the web portal, fetches transcript text, and files transcripts as Obsidian meeting notes under `Work/Meetings/` with a backlink in the day's daily note. |
-| **GitLab** | MCP proxy to a self-hosted GitLab instance (requires GitLab 17.3+). Search, create, and update issues and MRs. Check pipeline status and retry failed jobs. Search the project wiki. Auth via Personal Access Token. |
+| **Obsidian** | Per-day daily notes (`Daily/DAILY-YYYY-MM-DD.md`). Adds/lists/completes tasks in [Obsidian Tasks](https://obsidian-tasks-group.github.io/obsidian-tasks/) emoji format, rolls over incomplete items, full-text search via ripgrep. |
+| **Reminders** | Parses natural language ("send report next Friday") into task lines with `📅 YYYY-MM-DD` due dates. |
+| **Google Calendar** | Lists events for today or any date range (read-only OAuth). |
+| **Gmail** | Lists unread, searches, fetches full threads (read-only OAuth). |
+| **Slack** | Reads the Slack **desktop app** session locally (decrypts its `d` cookie) and calls the Slack Web API — unread channels/DMs and search. No browser, no admin app/token. |
+| **Zoom** | Reads Zoom's **AI Companion meeting notes** (auto-generated per meeting, via Zoom Docs) from your pasted `zoom.us` session — lists them and files them as Obsidian meeting notes. No cloud recording needed. |
+| **GitLab** | MCP proxy to a self-hosted GitLab (17.3+): issues, MRs, pipelines, wiki. Auth via Personal Access Token. |
 
 ---
 
@@ -65,99 +38,115 @@ A lightweight, Obsidian-native AI assistant that lives in your terminal and IDE 
 ```
                   ┌─────────────────────────────────────────┐
    $ sophonic ...  │   sophonic.cli (Typer)                   │
-                  │   Anthropic tool-use loop (sophonic ask) │
+                  │   Anthropic/OpenAI tool-use loop (ask)   │
                   └──────────────┬──────────────────────────┘
-                                 │
                   ┌──────────────▼──────────────────────────┐
                   │   sophonic.skills  (behavior layer)      │
                   │   SKILL.md per namespace · skill_load   │
-                  │   on-demand context · user overrides    │
                   └──────────────┬──────────────────────────┘
-                                 │
                   ┌──────────────▼──────────────────────────┐
                   │   sophonic.tools  (mechanism layer)      │
                   │   obsidian · reminders · gcal · gmail   │
-                  │   slack_web · zoom · gitlab (MCP proxy) │
+                  │   slack_local · zoom · gitlab (MCP proxy)│
                   └──────────────▲──────────────────────────┘
-                                 │
                   ┌──────────────┴──────────────────────────┐
    Claude Code /  │   sophonic.mcp_server (FastMCP, stdio)   │
-   Cursor / IDE   │   23 tools + skills as MCP Prompts      │
+   Cursor / IDE   │   tools + skills as MCP Prompts         │
                   └─────────────────────────────────────────┘
 ```
 
-Both entry points share identical tool and skill implementations — no duplicated logic. The MCP server exposes all tools as namespaced names (`obsidian_*`, `gcal_*`, `gmail_*`, `slack_*`, `zoom_*`, `reminder_*`) so `allowedTools` rules in Claude Code can target whole namespaces. Skills are additionally exposed as MCP Prompts, discoverable by any MCP-aware client.
+Both entry points share identical tool and skill implementations. The MCP server exposes tools as namespaced names (`obsidian_*`, `gcal_*`, …) so `allowedTools` rules can target whole namespaces. Skills are also exposed as MCP Prompts.
 
 ---
 
 ## Requirements
 
-- **Python 3.12+** (managed by `uv`)
-- **[uv](https://docs.astral.sh/uv/)** — `brew install uv`
-- **Anthropic API key** — for `sophonic ask` (CLI AI mode)
-- **Obsidian** with the [Tasks plugin](https://obsidian-tasks-group.github.io/obsidian-tasks/) installed (already supported — no config changes needed)
-- **Google Cloud project** with Calendar and Gmail APIs enabled — only for `sophonic auth google`
-- **Playwright browsers** — installed once with `uv run playwright install chromium`
-- **Island browser** (optional) — if your org uses [Island](https://www.island.io/) and you want Slack/Zoom scraped through it
+- **Python 3.12+** and **[uv](https://docs.astral.sh/uv/)** (`brew install uv`)
+- **Anthropic API key** — for `sophonic ask`
+- **Obsidian** with the [Tasks plugin](https://obsidian-tasks-group.github.io/obsidian-tasks/)
+- **Google Cloud project** with Calendar + Gmail APIs — only for `sophonic auth google`
+- **Playwright browser** — only for Zoom; installed for you by `sophonic init` (or run `playwright install chromium` manually)
 
 ---
 
 ## Installation
 
 ```bash
-# 1. Clone
-git clone <repo-url>
-cd sophonic
-
-# 2. Install dependencies
-uv sync
-
-# 3. Install Playwright's bundled browser (only needed for Slack/Zoom)
-uv run playwright install chromium
-
-# 4. Verify
-uv run sophonic --help
-uv run sophonic-mcp --help
+git clone <repo-url> && cd sophonic
+uv sync                                  # installs deps + generates the executables
 ```
 
-Create `~/.sophonic/` and set your API key:
+Then run `sophonic init` (below) — it installs the Playwright browser and walks you
+through configuration. (Or install the browser manually: `uv run playwright install chromium`.)
+
+### How the `sophonic` executable is generated
+
+`sophonic` and `sophonic-mcp` are **Python console scripts**, not compiled binaries. They're declared in `pyproject.toml`:
+
+```toml
+[project.scripts]
+sophonic     = "sophonic.cli:app"           # → runs sophonic/cli.py:app
+sophonic-mcp = "sophonic.mcp_server:main"   # → runs sophonic/mcp_server.py:main
+```
+
+`uv sync` installs the package into `.venv/` and generates wrapper scripts at `.venv/bin/sophonic` and `.venv/bin/sophonic-mcp`. You can run them three ways:
+
+```bash
+uv run sophonic --help          # run inside the project venv (no activation needed)
+source .venv/bin/activate        # then bare `sophonic` works in this shell
+uv tool install .                # install `sophonic` onto your PATH globally
+```
+
+The rest of this README uses bare `sophonic ...` — that assumes the venv is active or you've run `uv tool install .`. Otherwise prefix commands with `uv run`.
+
+### First-run setup
+
+The fastest path is the interactive wizard. It first installs third-party runtime
+dependencies (the Playwright browser used by Zoom), then writes `~/.sophonic/config.toml`
+and `~/.sophonic/.env` (0600), and can launch the auth flows at the end:
+
+```bash
+sophonic init
+```
+
+Check what's configured or still missing at any time:
+
+```bash
+sophonic doctor          # JSON status per integration, with a fix command for each gap
+```
+
+Prefer to do it by hand? Secrets live in `~/.sophonic/.env` and are **loaded
+automatically** (no shell-profile exports needed):
 
 ```bash
 mkdir -p ~/.sophonic
-echo 'ANTHROPIC_API_KEY=sk-ant-...' >> ~/.sophonic/.env
+printf 'sk-ant-...\n' | sophonic config set-secret ANTHROPIC_API_KEY --stdin   # keeps the key out of shell history
+sophonic config set vault.path "/Users/you/Documents/Obsidian/your-vault"
 ```
 
-Add to your shell profile so `sophonic ask` can find it:
-
-```bash
-# ~/.zshrc or ~/.config/fish/config.fish
-export ANTHROPIC_API_KEY="sk-ant-..."
-export SOPHONIC_VAULT="/Users/you/Documents/Obsidian/your-vault"
-export GITLAB_TOKEN="glpat-..."          # Personal Access Token for GitLab MCP proxy
-```
+`SOPHONIC_VAULT` / `GITLAB_TOKEN` environment variables still work and take
+precedence over `.env` if set.
 
 ---
 
 ## Configuration
 
-All settings live in `~/.sophonic/config.toml`. Every key has a working default — create the file only for values you want to override.
+All settings live in `~/.sophonic/config.toml`. Every key has a working default — create the file only to override.
 
 ```toml
 [vault]
-path        = "/Users/you/Documents/Obsidian/your-vault"
-daily_dir   = "Daily"          # daily notes go in Daily/DAILY-YYYY-MM-DD.md
+path         = "/Users/you/Documents/Obsidian/your-vault"
+daily_dir    = "Daily"            # → Daily/DAILY-YYYY-MM-DD.md
 daily_prefix = "DAILY-"
-meetings_dir = "Work/Meetings" # Zoom transcripts filed here
+meetings_dir = "Work/Meetings"    # Zoom transcripts filed here
 
-# Toggle integrations independently.
-# Disabled integrations skip their imports, CLI commands, and MCP tools.
-[features]
-obsidian  = true
+[features]                        # disabled features skip imports, CLI cmds, and MCP tools
+obsidian = true
 reminders = true
-google    = true   # Google Calendar + Gmail
-slack     = true
-zoom      = true
-gitlab    = false  # enable once [gitlab] section is configured
+google = true                     # Calendar + Gmail
+slack = true
+zoom = true
+gitlab = false                    # enable once [gitlab] is configured
 
 [google]
 client_secret_file = "~/.sophonic/google_client_secret.json"
@@ -166,220 +155,182 @@ scopes = [
   "https://www.googleapis.com/auth/gmail.readonly",
 ]
 
-# Browser engine per integration.
-# Options: "chromium" (default, bundled), "chrome", "island"
-[browser.slack]
-engine = "chromium"
-[browser.zoom]
-engine = "chromium"
-
-# Override Island binary path (auto-detected at /Applications/Island.app/... if empty)
+[browser.zoom]                    # engine: "chromium" (default) | "chrome" | "island"
+engine = "chromium"               # Zoom is the only browser-driven integration
 [browser.island]
-path = ""
+path = ""                         # auto-detected at /Applications/Island.app if empty
 
 [slack]
-workspace_url = "https://app.slack.com"   # or "https://yourcompany.slack.com"
-
-[zoom]
-recordings_url  = "https://zoom.us/recording"
-save_transcripts = true   # auto-file fetched transcripts as meeting notes
+# workspace_host = "acme.enterprise.slack.com"   # optional; only if token auto-detect fails
 
 [llm]
 model = "claude-sonnet-4-6"
 
 [gitlab]
 url             = "https://gitlab.company.com"
-token           = "glpat-xxxxxxxxxxxxxxxxxxxx"  # PAT with api scope; or set GITLAB_TOKEN env var
-default_project = "group/project"               # used when project not specified
+token           = "glpat-..."     # PAT with api scope; or set GITLAB_TOKEN
+default_project = "group/project"
 ```
 
-### Vault settings
+### Browser engine (Zoom)
 
-- `daily_dir` + `daily_prefix` control the filename pattern. Default produces `Daily/DAILY-2026-05-03.md`.
-- `meetings_dir` is where Zoom transcript notes are written. Created automatically on first use.
-
-### Feature toggles
-
-Set any flag to `false` to completely disable that integration — its Python modules won't be imported, its CLI subcommands won't appear, and its MCP tools won't be registered. Useful during initial setup or when an integration is broken. Available flags: `obsidian`, `reminders`, `google`, `slack`, `zoom`, `gitlab`.
-
-### Browser engine (Slack & Zoom)
-
-Each Playwright-backed integration has its own engine setting and its own persistent session directory under `~/.sophonic/playwright-profile/<engine>-<integration>/`. Switching engines does not clobber an existing logged-in session.
+Zoom is the only browser-driven integration (Slack and Google use APIs). It runs headless
+with your pasted `zoom.us` cookies via `[browser.zoom] engine`, defaulting to Playwright's
+bundled Chromium.
 
 | Engine | When to use |
 |---|---|
-| `chromium` | Default. Uses Playwright's bundled Chromium — no external install. |
-| `chrome` | Uses your installed Google Chrome via Playwright. Requires Chrome. Uses a dedicated profile dir — never touches your real Chrome profile. |
-| `island` | Uses [Island](https://www.island.io/) enterprise browser. Auto-detected at `/Applications/Island.app/`. Override with `[browser.island] path = "..."`. Useful when your org requires Island for SaaS access. |
+| `chromium` | Default. Playwright's bundled browser — no external install. |
+| `chrome` | Your installed Chrome, via a dedicated profile (never touches your real one). |
+| `island` | [Island](https://www.island.io/) enterprise browser. Note: managed Island builds often disallow automation, so `chromium` is recommended. |
 
-### Google OAuth
+### Google OAuth setup
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a project → enable **Google Calendar API** and **Gmail API**
-3. Create an **OAuth 2.0 Client ID** (Desktop app type)
-4. Download the JSON file and save it as `~/.sophonic/google_client_secret.json`
-5. Run `sophonic auth google` — a browser tab opens for consent; tokens are saved to `~/.sophonic/tokens/google.json` (mode `0600`)
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project and enable the **Calendar** and **Gmail** APIs.
+2. Create an **OAuth 2.0 Client ID** (Desktop app), download the JSON, save it as `~/.sophonic/google_client_secret.json`.
+3. Run `sophonic auth google` — consent in the browser; tokens are saved to `~/.sophonic/tokens/google.json`.
 
-### LLM model
+### LLM provider
 
-`sophonic ask` uses Anthropic's API with prompt caching enabled. Change the model in `[llm]`:
+`sophonic ask` uses Anthropic by default (prompt caching enabled). It also talks to **any OpenAI-compatible endpoint** (OpenAI, Azure, Ollama, OpenRouter, Groq, vLLM, LM Studio, LiteLLM) — the OpenAI client ships by default, no extra install:
 
 ```toml
 [llm]
-model = "claude-opus-4-7"   # or claude-haiku-4-5-20251001 for faster/cheaper
+provider = "openai"
+model = "gpt-4o"
+# api_base = "http://localhost:11434/v1"   # e.g. local Ollama
+# max_tokens = 4096
 ```
+
+Use `provider = "litellm"` for a [LiteLLM proxy](https://docs.litellm.ai/docs/simple_proxy) — it behaves like `openai` (same OpenAI-compatible client) but `api_base` is required (`sophonic doctor` flags it if missing):
+
+```toml
+[llm]
+provider = "litellm"
+model    = "bedrock/us.anthropic.claude-opus-4-8"   # a proxy alias
+api_base = "https://litellm.example.com"            # proxy root, required
+```
+
+| Setting | Purpose | Default |
+|---|---|---|
+| `provider` | `"anthropic"`, `"openai"`, or `"litellm"` | `"anthropic"` |
+| `model` | Model name | `"claude-sonnet-4-6"` |
+| `api_base` | OpenAI-compatible base URL (required for `litellm`) | provider default |
+| `max_tokens` | Max output tokens per turn | `4096` |
+
+**API key — one variable for any provider.** Set `SOPHONIC_LLM_API_KEY` and it's used
+whatever the provider (`sophonic config set-secret SOPHONIC_LLM_API_KEY --stdin`). As a
+convenience the standard native vars are also honored as a fallback: `ANTHROPIC_API_KEY`
+for `anthropic`, `OPENAI_API_KEY` for `openai`. (`litellm` uses only `SOPHONIC_LLM_API_KEY`.)
+
+`provider` and `model` can be overridden per-run via `SOPHONIC_LLM_PROVIDER` / `SOPHONIC_LLM_MODEL`. Prompt caching applies only on the native Anthropic path.
 
 ---
 
 ## Authentication
 
-### Google (Calendar + Gmail)
-
 ```bash
-# One-time OAuth flow — opens a browser tab for Google consent
-sophonic auth google
+sophonic auth google    # OAuth flow → ~/.sophonic/tokens/google.json (auto-refreshes)
+sophonic auth slack     # verifies the Slack desktop-app session (no browser)
+sophonic auth zoom      # prints how to paste your zoom.us cookies (no browser)
 ```
 
-Tokens are stored at `~/.sophonic/tokens/google.json`. They refresh automatically on subsequent calls. Re-run the command if you change scopes in `config.toml`.
+**Slack** reads the signed-in **Slack desktop app**'s session directly — no browser
+login. `sophonic auth slack` decrypts the app's `d` cookie (approve the one-time
+Keychain prompt for *Slack Safe Storage*), obtains the workspace token, and verifies
+via `auth.test`. If the token can't be auto-detected, set `[slack] workspace_host`
+(e.g. `your-org.enterprise.slack.com`) or the `SLACK_XOXC_TOKEN` secret.
 
-### Slack
-
-```bash
-# Opens your configured browser engine headed so you can log in
-sophonic auth slack
-```
-
-Log in to your Slack workspace in the browser that opens, then press Enter in the terminal. The session (cookies + local storage) is persisted under `~/.sophonic/playwright-profile/chromium-slack/` (or the engine you configured). Subsequent `sophonic slack` commands run headless against that profile.
-
-If your org uses Island, first set `[browser.slack] engine = "island"` in config, then run `sophonic auth slack`.
-
-### Zoom
+**Zoom** reads your **AI Companion meeting notes** (Zoom Docs) using your `zoom.us` web
+session cookies (browser automation is blocked in managed browsers like Island). Log
+into `zoom.us`, copy the cookies as a `name=value; …` string, and store them:
 
 ```bash
-sophonic auth zoom
+sophonic config set-secret ZOOM_COOKIES --stdin   # paste, then Ctrl-D
 ```
 
-Same flow as Slack — logs in once, saves session, runs headless thereafter. Session stored under `~/.sophonic/playwright-profile/chromium-zoom/`.
+Then `sophonic zoom notes` lists recent AI notes and `sophonic zoom save <id>` files one
+as an Obsidian meeting note (via Playwright's bundled Chromium, headless). Cookies
+expire faster than Slack's, so re-paste when `zoom` commands report `needs_auth`.
+
+> The legacy Playwright browser-scraping path (and `[browser.*] engine`, incl. Island)
+> is retained only for environments where a browser *can* be automated; the flows above
+> are the supported default.
 
 ---
 
 ## CLI Reference
 
-Set `SOPHONIC_VAULT` in your environment or in `~/.sophonic/config.toml` so commands know where your vault is.
-
-### Daily workflow
+Set `SOPHONIC_VAULT` (env or config) so commands know where your vault is.
 
 ```bash
-# Print today's daily note (creates it from template if it doesn't exist yet)
-sophonic daily
+# Daily workflow
+sophonic daily              # print today's note (creates from template if missing)
+sophonic today             # calendar + due tasks + yesterday's incomplete
+sophonic rollover          # copy yesterday's incomplete tasks into today (idempotent)
 
-# Show today's calendar + due tasks + anything incomplete from yesterday
-sophonic today
+# Reminders & tasks
+sophonic remind "send Q2 slides next Friday"
+sophonic tasks --due today
+sophonic tasks --due 2026-05-10        # due before this date
+sophonic tasks --overdue
+sophonic tasks --incomplete-yesterday
 
-# Copy yesterday's incomplete tasks into today's daily note (idempotent)
-sophonic rollover
+# Mail
+sophonic mail unread --max 50
+
+# Slack
+sophonic slack unread
+sophonic slack search "incident postmortem"
+
+# Zoom (AI Companion meeting notes)
+sophonic zoom notes --limit 20
+sophonic zoom save PUB4Gms1RyKnVL_rSUuUBw --title "Data Leads Weekly"
+
+# AI assistant (full tool-use loop)
+sophonic ask "what's on my calendar and are there unfinished tasks?"
 ```
 
-`sophonic rollover` is safe to run multiple times — it skips lines already present in today's note. Pair it with a cron job for automatic morning roll-over:
+`rollover` is cron-safe:
 
 ```cron
 0 8 * * * /path/to/sophonic rollover
 ```
 
-### Reminders & tasks
+**Natural-language dates:** `tomorrow`, `next Friday`, `this Monday`, `in 3 days`, `in 2 weeks`, ISO dates (`2026-05-10`), and month names (`May 15`, via dateparser).
 
-```bash
-# Add a task to today's daily note with a parsed due date
-sophonic remind "send Q2 slides to the team next Friday"
-sophonic remind "call dentist tomorrow"
-sophonic remind "pay credit card in 5 days"
-
-# List tasks
-sophonic tasks --due today
-sophonic tasks --due 2026-05-10      # due before this date
-sophonic tasks --overdue
-sophonic tasks --incomplete-yesterday
-```
-
-**Supported natural-language date expressions:**
-
-| Phrase | Resolves to |
-|---|---|
-| `tomorrow` | today + 1 day |
-| `next Friday` | next occurrence of Friday (strictly next week) |
-| `this Monday` | next occurrence of Monday (could be today+1 or this week) |
-| `in 3 days` | today + 3 days |
-| `in 2 weeks` | today + 14 days |
-| `2026-05-10` | exact ISO date |
-| Month names (`May 15`) | via dateparser fallback |
-
-### Mail
-
-```bash
-sophonic mail unread               # 20 most recent unread messages
-sophonic mail unread --max 50
-```
-
-### Slack
-
-```bash
-sophonic slack unread              # unread channels and DMs
-sophonic slack search "incident postmortem"
-```
-
-If not authenticated, commands print `Not authenticated. Run: sophonic auth slack` and exit cleanly.
-
-### Zoom
-
-```bash
-# List recent recordings (default: last 7 days)
-sophonic zoom transcripts
-sophonic zoom transcripts --since 14d
-
-# Fetch a transcript and file it as an Obsidian meeting note
-sophonic zoom save "https://zoom.us/recording/..." --title "Q2 Planning" --date 2026-05-03
-```
-
-`sophonic zoom save` writes the transcript to `Work/Meetings/YYYY-MM-DD - <title>.md` and adds a backlink under `## Notes` in today's daily note.
-
-### AI assistant (free-form)
-
-```bash
-sophonic ask "what's on my calendar today and are there any unfinished tasks?"
-sophonic ask "summarize my unread emails and add action items as tasks due today"
-sophonic ask "find the standup transcript from yesterday and summarize blockers"
-```
-
-`sophonic ask` runs the full Anthropic tool-use loop — it calls whichever tools it needs (calendar, tasks, search, etc.) and returns a plain-English answer. Uses `claude-sonnet-4-6` with prompt caching by default.
-
-### Auth
-
-```bash
-sophonic auth google    # OAuth flow for Calendar + Gmail
-sophonic auth slack     # headed browser login for Slack
-sophonic auth zoom      # headed browser login for Zoom
-```
+If a Slack/Zoom command isn't authenticated, it prints `Not authenticated. Run: sophonic auth <name>` and exits cleanly.
 
 ---
 
 ## MCP Server
 
-`sophonic-mcp` runs as an MCP server over stdio. Any IDE that supports the Model Context Protocol can call it — Claude Code, Cursor, VS Code with an MCP extension, etc.
+`sophonic-mcp` runs over stdio. There are two ways to connect it to Claude Code.
 
-### Registering in Claude Code
+> **Environment:** Sophonic auto-loads `~/.sophonic/.env`, so the MCP server picks up `SOPHONIC_LLM_API_KEY`, `ANTHROPIC_API_KEY`, `SOPHONIC_VAULT`, etc. from there even when Claude Code spawns it without your shell profile. You can also set the vault path in `~/.sophonic/config.toml`.
 
-Add to `~/.claude.json` (or to a project's `.claude/settings.json`):
+### Option A — as a Claude Code plugin (recommended)
+
+The repo ships a plugin: `.claude-plugin/plugin.json` (manifest) plus a bundled `.mcp.json` that launches the server via `uv run --project ${CLAUDE_PLUGIN_ROOT} sophonic-mcp` and forwards `SOPHONIC_VAULT` / `ANTHROPIC_API_KEY` from your environment. Point Claude Code at your clone:
+
+```bash
+claude --plugin-dir /Users/you/projects/sophonic
+```
+
+In that session the `sophonic` MCP server is live — run `/mcp` to confirm the tools and `/plugin` to see it listed. Iterate with `/reload-plugins` after edits.
+
+To load it every session without the flag, distribute it through a [plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) (or reference the repo from a team `.claude/settings.json`).
+
+### Option B — as a plain MCP server
+
+Register it manually in `~/.claude.json` (or a project's `.claude/settings.json`):
 
 ```json
 {
   "mcpServers": {
     "sophonic": {
       "command": "uv",
-      "args": [
-        "run",
-        "--project", "/Users/you/projects/sophonic",
-        "sophonic-mcp"
-      ],
+      "args": ["run", "--project", "/Users/you/projects/sophonic", "sophonic-mcp"],
       "env": {
         "SOPHONIC_VAULT": "/Users/you/Documents/Obsidian/your-vault",
         "ANTHROPIC_API_KEY": "sk-ant-..."
@@ -389,150 +340,66 @@ Add to `~/.claude.json` (or to a project's `.claude/settings.json`):
 }
 ```
 
-Or via the Claude Code `/mcp` command:
+Or: `/mcp add sophonic uv run --project /Users/you/projects/sophonic sophonic-mcp`
 
-```
-/mcp add sophonic uv run --project /Users/you/projects/sophonic sophonic-mcp
-```
+### Auto-approve safe reads
 
-Once registered, Claude Code can call tools like `obsidian_add_task` directly without you typing anything — just ask it naturally and it will call the right tools.
-
-**Tip:** Use `allowedTools` in `settings.json` to auto-approve safe reads without prompting:
+Use `allowedTools`:
 
 ```json
-{
-  "allowedTools": [
-    "mcp__sophonic__obsidian_*",
-    "mcp__sophonic__gcal_*",
-    "mcp__sophonic__reminder_create"
-  ]
-}
+{ "allowedTools": ["mcp__sophonic__obsidian_*", "mcp__sophonic__gcal_*", "mcp__sophonic__reminder_create"] }
 ```
 
-### Tool reference
+### Tools
 
-All 23 tools are available when all non-GitLab features are enabled. With GitLab enabled, additional `gitlab_*` tools are registered dynamically based on what your GitLab instance exposes. Disabled integrations contribute zero tools to the MCP manifest.
+Disabled features contribute zero tools. GitLab registers `gitlab_*` tools dynamically based on what your instance exposes.
 
-| Tool | Description |
+| Namespace | Tools |
 |---|---|
-| `obsidian_add_task` | Add a task line to today's (or a given) daily note |
-| `obsidian_list_tasks` | List tasks matching a filter: `all`, `due_today`, `overdue`, `incomplete_yesterday`, `due_before:YYYY-MM-DD` |
-| `obsidian_incomplete_yesterday` | Tasks not completed from yesterday |
-| `obsidian_rollover` | Copy yesterday's incomplete tasks into today's daily note |
-| `obsidian_complete_task` | Mark a task line as done (`[x]`) with a `✅ YYYY-MM-DD` stamp |
-| `obsidian_daily_note` | Return the text of today's (or a given) daily note |
-| `obsidian_read_note` | Read any note by vault-relative path |
-| `obsidian_write_note` | Write/overwrite a note |
-| `obsidian_append_note` | Append content to a note |
-| `obsidian_search` | Full-text vault search (ripgrep, Python fallback) |
-| `obsidian_save_meeting_note` | Write a meeting transcript note and backlink from today's daily note |
-| `reminder_create` | Parse natural-language reminder phrase and add it as a task |
-| `gcal_events_today` | Today's Google Calendar events |
-| `gcal_events_range` | Calendar events between two dates |
-| `gmail_unread` | Most recent unread Gmail messages |
-| `gmail_search` | Search Gmail by any query string |
-| `gmail_thread` | Full thread with body text |
-| `slack_unread` | Unread Slack channels/DMs |
-| `slack_search` | Search Slack |
-| `zoom_transcripts` | List recent Zoom recordings |
-| `zoom_transcript` | Fetch transcript text for a recording URL |
-| `zoom_save_transcript` | Fetch transcript and file it as an Obsidian meeting note |
-| `skill_load` | Load the full instructions for a named capability (e.g. `"obsidian"`, `"gcal"`). Call before using an unfamiliar set of tools. |
-| `gitlab_list_projects` | List accessible GitLab projects |
-| `gitlab_get_project` | Get project details |
-| `gitlab_list_issues` | List issues by state, label, or assignee |
-| `gitlab_get_issue` | Get full issue detail |
-| `gitlab_create_issue` | Create a new issue |
-| `gitlab_update_issue` | Update issue fields or close/reopen |
-| `gitlab_create_note` | Add a comment to an issue or MR |
-| `gitlab_list_merge_requests` | List MRs by state or author |
-| `gitlab_get_merge_request` | Get full MR detail including diff stats |
-| `gitlab_list_pipelines` | List pipelines by ref or status |
-| `gitlab_get_pipeline` | Get pipeline detail and job list |
-| `gitlab_retry_failed_ci_jobs` | Retry all failed jobs in a pipeline |
-| `gitlab_list_wiki_pages` | List wiki page slugs and titles |
-| `gitlab_get_wiki_page` | Get full Markdown content of a wiki page |
+| **obsidian** | `add_task`, `list_tasks`, `incomplete_yesterday`, `rollover`, `complete_task`, `daily_note`, `read_note`, `write_note`, `append_note`, `search`, `save_meeting_note` |
+| **reminder** | `create` |
+| **gcal** | `events_today`, `events_range` |
+| **gmail** | `unread`, `search`, `thread` |
+| **slack** | `unread`, `search` |
+| **zoom** | `notes`, `note`, `save_note` |
+| **gitlab** | `list_projects`, `get_project`, `list_issues`, `get_issue`, `create_issue`, `update_issue`, `create_note`, `list_merge_requests`, `get_merge_request`, `list_pipelines`, `get_pipeline`, `retry_failed_ci_jobs`, `list_wiki_pages`, `get_wiki_page` |
+| **(meta)** | `skill_load` — load full instructions for a namespace before using unfamiliar tools |
 
 ---
 
 ## Skills System
 
-Sophonic separates **mechanism** (Python code — OAuth, Playwright, filesystem) from **behavior** (prompts, descriptions, conventions). The behavior layer lives in `SKILL.md` files that follow the same format as Claude Code skills: YAML frontmatter + Markdown body.
+Sophonic separates **mechanism** (Python: OAuth, Playwright, filesystem) from **behavior** (prompts, conventions). Behavior lives in `SKILL.md` files (YAML frontmatter + Markdown), one per namespace under `src/sophonic/skills/`.
 
-Each capability namespace has a paired skill file:
-
-```
-src/sophonic/skills/
-  obsidian/SKILL.md
-  reminders/SKILL.md
-  gcal/SKILL.md
-  gmail/SKILL.md
-  slack/SKILL.md
-  zoom/SKILL.md
-  gitlab/SKILL.md
-```
-
-The system prompt presented to the LLM contains only a compact **index** of skill names and descriptions (~30 tokens per skill). When the model needs to use a capability in depth, it calls `skill_load("obsidian")` to get the full body — conventions, parameter guidance, and when-to-use notes — on demand.
-
-### SKILL.md format
+The system prompt carries only a compact **index** of skill names/descriptions (~30 tokens each). When the model needs a capability in depth, it calls `skill_load("obsidian")` to fetch the full body on demand.
 
 ```markdown
 ---
 name: obsidian
-description: Obsidian vault operations — daily notes, tasks, and search. Trigger when the user mentions tasks, notes, vault, reminders, or meetings.
-tools: [obsidian_add_task, obsidian_list_tasks, obsidian_daily_note, ...]
+description: Obsidian vault operations — daily notes, tasks, search. Trigger on tasks/notes/vault.
+tools: [obsidian_add_task, obsidian_list_tasks, obsidian_daily_note]
 ---
 
 # Obsidian
-
-You have these sophonic tools for Obsidian:
-
-- `obsidian_add_task(text, due?, priority?, tags?)` — appends a task under ## Tasks in today's daily note.
+- `obsidian_add_task(text, due?, priority?, tags?)` — appends under ## Tasks in today's note.
 ...
-
-## Conventions
-
-- Task emoji format: `📅 YYYY-MM-DD` for due, `⏫/🔼/🔽` for priority.
-...
-
-## When to use
-
-Prefer obsidian tools any time the user mentions tasks, reminders, or their vault.
 ```
 
-The `tools:` list in frontmatter is validated at startup — if any tool listed there is not registered in the tool registry, Sophonic raises an error on boot. This keeps skill files from drifting silently out of sync with the Python modules.
+The `tools:` list is validated at startup — Sophonic errors on boot if any listed tool isn't registered, keeping skills in sync with the code.
 
-### User overrides
+**User overrides:** drop a replacement at `~/.sophonic/skills/<name>/SKILL.md` to fully replace a bundled skill (no merging). Templates (`*.md.j2`) override the same way.
 
-Drop a replacement `SKILL.md` at `~/.sophonic/skills/<name>/SKILL.md` to override any bundled skill without touching the repo:
-
-```
-~/.sophonic/skills/
-  obsidian/SKILL.md    ← your vault layout, your conventions
-```
-
-User files fully replace the bundled version (no merging). Templates (`*.md.j2`) work the same way: `~/.sophonic/skills/obsidian/templates/daily.md.j2` overrides the bundled daily-note template.
-
-### skill_load tool
-
-Both the CLI loop and the MCP server expose `skill_load` as a callable tool. The model calls it before using an unfamiliar namespace:
-
-```
-skill_load("obsidian")
-→ { "name": "obsidian", "body": "# Obsidian\n\n..." }
-```
-
-In Claude Code, MCP-registered skills are also available as first-class **MCP Prompts** — the `/prompts` list in the MCP inspector shows all skill names, and any MCP client that supports prompts can fetch them directly without calling `skill_load`.
+In Claude Code, skills are also first-class **MCP Prompts** — visible in `/prompts` and fetchable by any MCP client without calling `skill_load`.
 
 ---
 
 ## Obsidian Conventions
 
-Sophonic works with the [Obsidian Tasks plugin](https://obsidian-tasks-group.github.io/obsidian-tasks/) emoji format. No changes to your vault configuration are needed — the tools write standard Markdown that the plugin picks up automatically.
+Works with the [Obsidian Tasks plugin](https://obsidian-tasks-group.github.io/obsidian-tasks/) — no vault config changes needed.
 
 ### Daily notes
 
-Each day gets its own note at `Daily/DAILY-YYYY-MM-DD.md` (configurable). Created on first write of the day from this template:
+Each day gets `Daily/DAILY-YYYY-MM-DD.md` (configurable), created from this template on first write:
 
 ```markdown
 # DAILY 2026-05-03
@@ -543,57 +410,31 @@ Each day gets its own note at `Daily/DAILY-YYYY-MM-DD.md` (configurable). Create
 ## Notes
 ```
 
-New tasks are inserted under `## Tasks`. Free-form content goes under `## Notes`. Existing vaults with a single rolling daily note (e.g. `Work/DAILY.md`) are left untouched — the new per-day notes live alongside them.
+Tasks go under `## Tasks`, free-form content under `## Notes`. Existing single-file daily notes are left untouched.
 
 ### Task format
 
-Tasks follow the Obsidian Tasks emoji convention:
-
 ```
 - [ ] Pay rent 📅 2026-05-05 ⏫ #personal/finance
-- [ ] Review PR 📅 2026-05-04 🔼
 - [x] Send slides ✅ 2026-05-03
 ```
 
 | Emoji | Meaning |
 |---|---|
 | `📅 YYYY-MM-DD` | Due date |
-| `⏫` | High priority |
-| `🔼` | Medium priority |
-| `🔽` | Low priority |
-| `✅ YYYY-MM-DD` | Completion date (added when task is marked done) |
-
-Your existing `Task Dashboard.md` (or any vault-wide Tasks query) picks up tasks written by Sophonic automatically — no dashboard changes needed.
+| `⏫` / `🔼` / `🔽` | High / Medium / Low priority |
+| `✅ YYYY-MM-DD` | Completion date |
 
 ### Meeting notes
 
-`zoom_save_transcript` (and `sophonic zoom save`) writes notes to `Work/Meetings/YYYY-MM-DD - <title>.md` with this structure:
-
-```markdown
----
-source: zoom
-recorded_at: 2026-05-03
-tags: [sophonic]
----
-
-# Q2 Planning
-
-**Source URL:** https://zoom.us/recording/...
-
-```
-Speaker 1: Let's discuss Q2 goals...
-Speaker 2: Agreed, here's my proposal...
-```
-```
-
-A backlink is added to the day's `## Notes` section:
+`zoom_save_note` writes `Work/Meetings/YYYY-MM-DD - <title>.md` with source metadata and the AI note content, then adds a backlink under `## Notes` in today's daily note:
 
 ```markdown
 ## Notes
 - [[Work/Meetings/2026-05-03 - Q2 Planning]]
 ```
 
-All Sophonic-created notes include a `#sophonic` tag, making it easy to build a Dataview query of everything the assistant has written.
+All Sophonic-created notes carry a `#sophonic` tag for easy Dataview queries.
 
 ---
 
@@ -601,112 +442,40 @@ All Sophonic-created notes include a `#sophonic` tag, making it easy to build a 
 
 ```
 sophonic/
-├── pyproject.toml               # uv project: deps, console scripts, pytest config
-├── uv.lock
-├── .python-version              # 3.12
-├── .env.example                 # copy to ~/.sophonic/.env
+├── pyproject.toml               # deps, console scripts, pytest config
+├── .claude-plugin/plugin.json   # Claude Code plugin manifest
+├── .mcp.json                    # bundled MCP server config (used by the plugin)
 ├── src/sophonic/
-│   ├── config.py                # Pydantic config model, loads ~/.sophonic/config.toml
-│   ├── paths.py                 # vault root, daily_note_path(), meetings_dir()
-│   ├── dates.py                 # natural-language date parser (native + dateparser fallback)
+│   ├── config.py                # Pydantic config, loads ~/.sophonic/config.toml
+│   ├── paths.py · dates.py      # vault paths · natural-language date parser
 │   ├── google_auth.py           # shared Google OAuth 2.0 flow
 │   ├── browser.py               # Playwright persistent context (chromium/chrome/island)
-│   ├── llm.py                   # Anthropic client, prompt caching, tool-use loop
-│   ├── cli.py                   # Typer CLI app
-│   ├── mcp_server.py            # FastMCP stdio server
-│   ├── skills.py                # skill discovery, index, skill_load tool, template renderer
-│   ├── skills/                  # bundled SKILL.md files (one per capability namespace)
-│   │   ├── obsidian/
-│   │   │   ├── SKILL.md
-│   │   │   └── templates/
-│   │   │       ├── daily.md.j2      # daily note template (date variable)
-│   │   │       └── meeting.md.j2   # meeting note template
-│   │   ├── reminders/SKILL.md
-│   │   ├── gcal/SKILL.md
-│   │   ├── gmail/SKILL.md
-│   │   ├── slack/SKILL.md
-│   │   ├── zoom/SKILL.md
-│   │   └── gitlab/SKILL.md
+│   ├── llm.py                   # Anthropic/OpenAI client, prompt caching, tool-use loop
+│   ├── cli.py · mcp_server.py   # Typer CLI · FastMCP stdio server (the two entry points)
+│   ├── skills.py                # skill discovery, index, skill_load, template renderer
+│   ├── skills/<name>/SKILL.md   # one skill per namespace (+ obsidian templates/*.md.j2)
 │   └── tools/
 │       ├── __init__.py          # build_registry() — feature-gated tool registration
-│       ├── obsidian.py          # vault read/write, task CRUD, rollover, search
-│       ├── reminders.py         # natural-language → Obsidian task line
-│       ├── gcal.py              # Google Calendar (events_today, events_range)
-│       ├── gmail.py             # Gmail (unread, search, thread)
-│       ├── slack_web.py         # Playwright Slack scraper (unread, search)
-│       ├── zoom.py              # Playwright Zoom scraper (transcripts, save)
-│       └── gitlab.py            # MCP proxy (httpx → GitLab /api/v4/mcp)
-└── tests/
-    ├── conftest.py              # use_fixture_vault autouse fixture
-    ├── fixtures/vault/          # throwaway vault for tests
-    ├── test_dates.py
-    ├── test_obsidian.py
-    ├── test_reminders.py
-    ├── test_gcal.py
-    ├── test_gmail.py
-    ├── test_slack.py
-    ├── test_zoom.py
-    ├── test_llm_schema.py
-    ├── test_mcp.py
-    ├── test_skills.py
-    ├── test_config.py
-    └── test_gitlab.py
+│       ├── obsidian.py · reminders.py · gcal.py · gmail.py
+│       └── slack_local.py · zoom.py · gitlab.py
+└── tests/                       # mocked Playwright + Google clients; no network/creds needed
 ```
 
 ---
 
 ## Development
 
-### Running tests
-
 ```bash
-uv run -- python -m pytest               # all 86 tests
-uv run -- python -m pytest -v            # verbose
-uv run -- python -m pytest tests/test_obsidian.py   # single file
+uv run -- python -m pytest                      # all tests
+uv run -- python -m pytest tests/test_obsidian.py -v
 ```
-
-All integration tests (Google, Slack, Zoom) use mocked Playwright and mocked Google API clients — no real network calls, no credentials needed.
 
 ### Adding a new integration
 
-1. Create `src/sophonic/tools/<name>.py` with your functions and a `TOOLS` dict:
-
-   ```python
-   TOOLS: dict[str, Any] = {
-       "myintegration_action": action_fn,
-   }
-   ```
-
-2. Create `src/sophonic/skills/<name>/SKILL.md` with frontmatter listing those exact tool names:
-
-   ```markdown
-   ---
-   name: myintegration
-   description: One sentence describing what this capability does and when to trigger it.
-   tools: [myintegration_action]
-   ---
-
-   # My Integration
-
-   You have these sophonic tools for My Integration:
-
-   - `myintegration_action(param)` — what it does and when to call it.
-
-   ## When to use
-
-   Call these tools when the user asks about ...
-   ```
-
-   The `tools:` list is validated at startup — Sophonic raises an error if any listed tool is not registered.
-
-3. Add a feature flag to `FeaturesConfig` in `config.py`:
-
-   ```python
-   class FeaturesConfig(BaseModel):
-       myintegration: bool = True
-   ```
-
-4. Register it in `tools/__init__.py` inside `build_registry()`:
+1. Create `src/sophonic/tools/<name>.py` exporting a `TOOLS: dict[str, Any]` mapping tool names to functions.
+2. Create `src/sophonic/skills/<name>/SKILL.md` with frontmatter listing those exact tool names (validated at startup).
+3. Add a flag to `FeaturesConfig` in `config.py`.
+4. Register it in `build_registry()` in `tools/__init__.py`:
 
    ```python
    if cfg.myintegration:
@@ -715,7 +484,6 @@ All integration tests (Google, Slack, Zoom) use mocked Playwright and mocked Goo
            register(name, fn)
    ```
 
-5. Add CLI subcommands in `cli.py` if needed.
-6. Write tests with mocked external calls in `tests/test_<name>.py`.
+5. Add CLI subcommands in `cli.py` if needed, and tests in `tests/test_<name>.py`.
 
-The MCP server picks up new tools automatically via `build_registry()` and exposes the new SKILL.md as an MCP Prompt — no changes to `mcp_server.py` or `llm.py` needed.
+The MCP server and skill index pick up new tools automatically — no changes to `mcp_server.py` or `llm.py` needed.

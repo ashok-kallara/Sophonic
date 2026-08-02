@@ -51,22 +51,57 @@ class BrowserIslandConfig(BaseModel):
 
 
 class BrowserConfig(BaseModel):
-    slack: BrowserEngineConfig = BrowserEngineConfig(engine="chromium")
+    # Zoom is the only browser-driven integration (Slack reads its desktop-app session).
     zoom: BrowserEngineConfig = BrowserEngineConfig(engine="chromium")
     island: BrowserIslandConfig = BrowserIslandConfig()
 
 
 class SlackConfig(BaseModel):
-    workspace_url: str = "https://app.slack.com"
+    # Workspace host for token derivation, e.g. "acme.enterprise.slack.com". Optional:
+    # the token is usually found automatically; set this only if auto-detection fails.
+    workspace_host: str = ""
 
 
-class ZoomConfig(BaseModel):
-    recordings_url: str = "https://zoom.us/recording"
-    save_transcripts: bool = True  # auto-file transcripts as meeting notes
+# Providers that speak the OpenAI wire format (a LiteLLM proxy is OpenAI-compatible).
+OPENAI_COMPATIBLE_PROVIDERS = ("openai", "litellm")
+LLM_PROVIDERS = ("anthropic",) + OPENAI_COMPATIBLE_PROVIDERS
+
+# One provider-agnostic env var for the LLM key — set this and it works for any provider.
+LLM_API_KEY_ENV = "SOPHONIC_LLM_API_KEY"
+# Provider-native env vars honored as a fallback (litellm has no standard one).
+_NATIVE_KEY_ENV = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}
+
+
+def llm_api_key_envs(provider: str) -> list[str]:
+    """Env vars consulted, in order, for a provider's LLM API key."""
+    envs = [LLM_API_KEY_ENV]
+    native = _NATIVE_KEY_ENV.get(provider)
+    if native:
+        envs.append(native)
+    return envs
+
+
+def resolve_llm_api_key(provider: str) -> str | None:
+    """Return the first non-empty LLM API key found for the provider, else None."""
+    for name in llm_api_key_envs(provider):
+        if value := os.environ.get(name):
+            return value
+    return None
 
 
 class LLMConfig(BaseModel):
+    provider: str = "anthropic"          # one of LLM_PROVIDERS
     model: str = "claude-sonnet-4-6"
+    api_base: str | None = None          # OpenAI-compatible base_url (Ollama/LiteLLM proxy/etc.)
+    max_tokens: int = 4096
+
+    @model_validator(mode="after")
+    def validate_provider(self) -> "LLMConfig":
+        if self.provider not in LLM_PROVIDERS:
+            raise ValueError(
+                f"Invalid llm provider: {self.provider!r}. Choose one of {', '.join(LLM_PROVIDERS)}."
+            )
+        return self
 
 
 class GitLabConfig(BaseModel):
@@ -81,13 +116,19 @@ class Config(BaseModel):
     google: GoogleConfig = GoogleConfig()
     browser: BrowserConfig = BrowserConfig()
     slack: SlackConfig = SlackConfig()
-    zoom: ZoomConfig = ZoomConfig()
     llm: LLMConfig = LLMConfig()
     gitlab: GitLabConfig = GitLabConfig()
 
 
 @lru_cache(maxsize=1)
 def load_config() -> Config:
+    # Load ~/.sophonic/.env into the environment so persisted secrets take effect.
+    # override=False keeps any real environment variable authoritative.
+    _env_file = _CONFIG_DIR / ".env"
+    if _env_file.exists():
+        from dotenv import load_dotenv
+        load_dotenv(_env_file, override=False)
+
     raw: dict = {}
     if _CONFIG_FILE.exists():
         import tomllib
@@ -100,6 +141,12 @@ def load_config() -> Config:
 
     if gitlab_token := os.environ.get("GITLAB_TOKEN"):
         raw.setdefault("gitlab", {})["token"] = gitlab_token
+
+    if llm_provider := os.environ.get("SOPHONIC_LLM_PROVIDER"):
+        raw.setdefault("llm", {})["provider"] = llm_provider
+
+    if llm_model := os.environ.get("SOPHONIC_LLM_MODEL"):
+        raw.setdefault("llm", {})["model"] = llm_model
 
     return Config.model_validate(raw)
 

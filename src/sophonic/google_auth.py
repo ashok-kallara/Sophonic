@@ -13,6 +13,31 @@ def _token_path() -> Path:
     return tokens / "google.json"
 
 
+def _require_desktop_client(secret_file: Path) -> None:
+    """Fail early with a clear message if the client secret is a Web-app client.
+
+    Sophonic authenticates via a localhost loopback port (`run_local_server`), which
+    only a 'Desktop app' OAuth client accepts. A 'Web application' client requires
+    exact pre-registered redirect URIs and otherwise fails with a confusing
+    `redirect_uri_mismatch` error from Google.
+    """
+    import json
+
+    try:
+        data = json.loads(secret_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read Google client secret at {secret_file}: {exc}") from exc
+
+    if "installed" not in data and "web" in data:
+        raise ValueError(
+            f"{secret_file} is a 'Web application' OAuth client, but Sophonic needs a "
+            "'Desktop app' client (it signs in via a localhost loopback port). In Google "
+            "Cloud Console → APIs & Services → Credentials, create an OAuth client ID of "
+            "type 'Desktop app', download the JSON, and replace this file. See the README "
+            "'Google OAuth setup' section."
+        )
+
+
 def get_credentials():
     """Return valid Google credentials, running OAuth flow if needed."""
     from google.oauth2.credentials import Credentials
@@ -37,6 +62,7 @@ def get_credentials():
                     f"Google OAuth client secret not found at {secret_file}. "
                     "Download it from https://console.cloud.google.com/ and place it there."
                 )
+            _require_desktop_client(secret_file)
             flow = InstalledAppFlow.from_client_secrets_file(str(secret_file), scopes)
             creds = flow.run_local_server(port=0)
         token_path.write_text(creds.to_json(), encoding="utf-8")

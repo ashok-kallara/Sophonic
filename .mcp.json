@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "sophonic": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "sophonic-mcp"],
+      "env": {
+        "SOPHONIC_VAULT": "${SOPHONIC_VAULT}",
+        "ANTHROPIC_API_KEY": "${ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}

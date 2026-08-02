@@ -24,3 +24,19 @@ def use_fixture_vault(tmp_path, monkeypatch):
     load_config.cache_clear()
     yield vault
     load_config.cache_clear()
+
+
+@pytest.fixture
+def tmp_config(tmp_path, monkeypatch):
+    """Redirect ~/.sophonic (config.toml + .env) to an isolated temp dir.
+
+    Prevents config-writing tests from touching the developer's real config.
+    """
+    from sophonic import config
+
+    d = tmp_path / "dot-sophonic"
+    monkeypatch.setattr(config, "_CONFIG_DIR", d)
+    monkeypatch.setattr(config, "_CONFIG_FILE", d / "config.toml")
+    config.load_config.cache_clear()
+    yield d
+    config.load_config.cache_clear()
