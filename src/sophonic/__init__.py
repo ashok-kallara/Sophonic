@@ -1,1 +1,1 @@
-"""Akashic — Obsidian-native AI assistant."""
+"""Sophonic — Obsidian-native AI assistant."""

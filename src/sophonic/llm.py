@@ -158,6 +158,46 @@ def ask(prompt: str, registry: dict[str, Any] | None = None) -> str:
     return _ask_anthropic(prompt, reg, system_prompt, cfg)
 
 
+_DEFAULT_SUMMARY_INSTRUCTION = (
+    "Summarize the following into a few concise markdown bullet points. "
+    "Be factual and terse; no preamble."
+)
+
+
+def summarize(text: str, instruction: str | None = None, max_tokens: int = 512) -> str:
+    """Single-shot, tool-free completion used for digests (e.g. the Slack summary).
+
+    Raises RuntimeError if no API key is configured, so callers can fall back to a
+    deterministic summary.
+    """
+    cfg = load_config().llm
+    if not resolve_llm_api_key(cfg.provider):
+        raise RuntimeError(f"No LLM API key configured for provider {cfg.provider!r}")
+
+    system = instruction or _DEFAULT_SUMMARY_INSTRUCTION
+
+    if cfg.provider in OPENAI_COMPATIBLE_PROVIDERS:
+        client = _openai_client(cfg)
+        resp = client.chat.completions.create(
+            model=cfg.model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": text},
+            ],
+        )
+        return (resp.choices[0].message.content or "").strip()
+
+    client = _client()
+    resp = client.messages.create(
+        model=cfg.model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": text}],
+    )
+    return "\n".join(b.text for b in resp.content if b.type == "text").strip()
+
+
 def _ask_anthropic(prompt: str, reg: dict[str, Any], system_prompt: str, cfg: Any) -> str:
     """Anthropic native tool-use loop with prompt caching."""
     client = _client()

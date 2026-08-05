@@ -187,6 +187,36 @@ def test_ask_defaults_to_anthropic():
     assert result == "from anthropic"
 
 
+# ── summarize ───────────────────────────────────────────────────────────────────
+
+def test_summarize_openai_provider_returns_text():
+    from sophonic import llm
+
+    fake = _FakeOpenAIClient([_response(content="- point one\n- point two")])
+    cfg = Config(llm=LLMConfig(provider="openai", model="gpt-4o"))
+
+    with patch.object(llm, "load_config", return_value=cfg), \
+         patch.object(llm, "resolve_llm_api_key", return_value="key"), \
+         patch.object(llm, "_openai_client", return_value=fake):
+        out = llm.summarize("some long unread text")
+
+    assert out == "- point one\n- point two"
+    call = fake.chat.completions.calls[0]
+    assert call["messages"][0]["role"] == "system"        # instruction
+    assert call["messages"][1]["content"] == "some long unread text"
+    assert "tools" not in call                             # single-shot, no tool loop
+
+
+def test_summarize_raises_without_api_key():
+    from sophonic import llm
+
+    cfg = Config(llm=LLMConfig(provider="openai", model="gpt-4o"))
+    with patch.object(llm, "load_config", return_value=cfg), \
+         patch.object(llm, "resolve_llm_api_key", return_value=None):
+        with pytest.raises(RuntimeError, match="No LLM API key"):
+            llm.summarize("text")
+
+
 # ── missing dependency guard ───────────────────────────────────────────────────
 
 def test_openai_client_missing_package_raises_clear_error():

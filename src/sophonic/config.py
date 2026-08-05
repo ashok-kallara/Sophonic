@@ -32,7 +32,8 @@ class GoogleConfig(BaseModel):
     client_secret_file: Path = _CONFIG_DIR / "google_client_secret.json"
     scopes: list[str] = Field(
         default=["https://www.googleapis.com/auth/calendar.readonly",
-                 "https://www.googleapis.com/auth/gmail.readonly"]
+                 "https://www.googleapis.com/auth/gmail.readonly",
+                 "https://www.googleapis.com/auth/tasks.readonly"]
     )
 
 

@@ -3,6 +3,7 @@ name: slack
 description: Read Slack unread messages and search history via browser scraper. Trigger when the user asks about Slack messages or channels.
 tools:
   - slack_unread
+  - slack_unread_digest
   - slack_search
 ---
 
@@ -13,6 +14,7 @@ Browser-scraper access to Slack (used when the Slack MCP server is unavailable d
 ## Tools
 
 - `slack_unread(limit)` — Return unread messages across all channels as `{channel, sender, text, ts}`.
+- `slack_unread_digest(per_channel, max_channels)` — Unread conversations with recent message content, split into `actionable` (DMs + @-mentions) and `informational` (other channels); each entry has `{channel, type, mentions, latest, permalink, messages}`. Used by `day_start`.
 - `slack_search(query, limit)` — Search Slack history. Returns `{channel, sender, text, ts, permalink}`.
 
 ## Auth

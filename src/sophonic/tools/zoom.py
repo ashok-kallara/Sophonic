@@ -220,8 +220,164 @@ def save_note(doc_id: str, title: str | None = None) -> dict[str, Any]:
     )
 
 
+# ── action items → tasks ────────────────────────────────────────────────────────
+
+# Headings that begin an action-item section (collection continues across adjacent ones).
+_ACTION_HEADING_RE = re.compile(
+    r"^\s*(action items?|next steps?|follow[\s-]?ups?|to-?dos?)\s*:?\s*$", re.I
+)
+# Non-action section headings that end collection.
+_STOP_HEADINGS = {
+    "quick recap", "recap", "summary", "key outcomes", "outcomes", "overview",
+    "details", "notes", "transcript", "manual notes", "attendees", "recording",
+    "decisions", "discussion",
+}
+_BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.*)$")
+
+
+def _extract_action_items(text: str) -> list[str]:
+    """Pull the action-item lines out of a scraped Zoom AI note.
+
+    Collects list items under an "Action Items"/"Next Steps"/"Follow-ups" heading
+    until the next non-action section heading.
+    """
+    items: list[str] = []
+    in_section = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if _ACTION_HEADING_RE.match(line):
+            in_section = True
+            continue
+        if not in_section or not line:
+            continue
+        norm = line.lower().rstrip(":").strip()
+        if line.startswith("#") or norm in _STOP_HEADINGS:
+            break
+        m = _BULLET_RE.match(raw)
+        item = (m.group(1) if m else line).strip()
+        item = re.sub(r"^\[[ xX]\]\s*", "", item).strip()  # drop any checkbox marker
+        if item:
+            items.append(item)
+    return items
+
+
+def _resolve_range(on, since, until, days, ref: date) -> tuple[date, date]:
+    """Resolve a (start, end) date window from the supported selectors.
+
+    Precedence: on → days → since/until → default (today). Values may be ISO dates
+    or natural language ("yesterday", "last Monday").
+    """
+    from datetime import timedelta
+
+    from sophonic.dates import parse_date
+
+    def _p(value: str) -> date:
+        d = parse_date(value)
+        if d is None:
+            raise ValueError(f"Could not parse date: {value!r}")
+        return d
+
+    if on:
+        d = _p(on)
+        return d, d
+    if days:
+        if days < 1:
+            raise ValueError("days must be >= 1")
+        return ref - timedelta(days=days - 1), ref
+    if since or until:
+        return (_p(since) if since else ref), (_p(until) if until else ref)
+    return ref, ref
+
+
+def _meeting_ref(n: dict[str, Any]) -> str:
+    """A traceable reference to the source meeting for a task line.
+
+    Prefers a clickable markdown link to the Zoom note; falls back to plain text.
+    """
+    meeting = n.get("meeting") or "Zoom meeting"
+    iso = n.get("date")
+    label = f"{meeting} — {iso}" if iso else meeting
+    link = n.get("link")
+    return f"[{label}]({link})" if link else f"({label})"
+
+
+def action_items(
+    on: str | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    days: int | None = None,
+    owner: str | None = None,
+    dry_run: bool = False,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Pull action items from Zoom meeting notes and add them to today's tasks.
+
+    Defaults to today's meetings. Widen the window with `on`/`since`/`until` (ISO or
+    natural language) or `days` (last N days including today). `owner` keeps only items
+    whose text contains that substring (e.g. your name). `dry_run` previews without
+    writing. Re-runs are deduped against today's note, so it's safe to run repeatedly.
+    """
+    cookies = _zoom_cookies()
+    if not cookies:
+        return _NEEDS_AUTH
+
+    try:
+        start, end = _resolve_range(on, since, until, days, date.today())
+    except ValueError as exc:
+        return {"error": str(exc)}
+
+    listing = notes(limit)
+    if listing and isinstance(listing[0], dict) and ("needs_auth" in listing[0] or "message" in listing[0]):
+        return listing[0]
+
+    selected = []
+    for n in listing:
+        iso = n.get("date")
+        if not iso:
+            continue
+        try:
+            d = date.fromisoformat(iso)
+        except ValueError:
+            continue
+        if start <= d <= end:
+            selected.append(n)
+
+    from sophonic.tools.obsidian import add_task, get_daily_note
+
+    existing = get_daily_note()  # today's note — dedupe target for re-runs
+    seen: set[str] = set()
+    collected: list[dict[str, Any]] = []
+
+    for n in selected:
+        data = note(n["id"])
+        if not isinstance(data, dict) or "text" not in data:
+            continue
+        ref = _meeting_ref(n)
+        for item in _extract_action_items(data["text"]):
+            if owner and owner.lower() not in item.lower():
+                continue
+            key = item.lower()
+            if key in seen or item in existing:
+                continue
+            seen.add(key)
+            # Stamp the source meeting into the task line so it's traceable.
+            entry = {"item": item, "meeting": n.get("meeting"), "date": n.get("date"), "ref": ref}
+            if not dry_run:
+                add_task(text=f"{item} {ref}", tags=["zoom"])
+            collected.append(entry)
+
+    return {
+        "range": {"start": start.isoformat(), "end": end.isoformat()},
+        "meetings_scanned": len(selected),
+        "action_items": collected,
+        "count": len(collected),
+        "dry_run": dry_run,
+    }
+
+
 TOOLS: dict[str, Any] = {
     "zoom_notes": notes,
     "zoom_note": note,
     "zoom_save_note": save_note,
+    "zoom_action_items": action_items,
 }

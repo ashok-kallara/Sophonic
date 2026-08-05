@@ -55,7 +55,7 @@ def test_tool_names_are_namespaced(use_fixture_vault):
     reg = build_registry()
     prefixes = {name.split("_")[0] for name in reg}
     # All tools should be in one of the known namespaces
-    assert prefixes <= {"obsidian", "gcal", "gmail", "slack", "zoom", "reminder"}
+    assert prefixes <= {"obsidian", "gcal", "gmail", "gtasks", "slack", "zoom", "reminder", "day"}
 
 
 def test_mcp_instructions_contains_skill_index(use_fixture_vault):

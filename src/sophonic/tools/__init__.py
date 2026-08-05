@@ -28,6 +28,10 @@ def build_registry() -> dict[str, Callable[..., Any]]:
         from sophonic.tools import obsidian
         for name, fn in obsidian.TOOLS.items():
             register(name, fn)
+        # The "start my day" brief composes obsidian + zoom/gtasks/slack (each self-gating).
+        from sophonic import daybrief
+        for name, fn in daybrief.TOOLS.items():
+            register(name, fn)
 
     if feat.reminders:
         from sophonic.tools import reminders
@@ -36,8 +40,8 @@ def build_registry() -> dict[str, Callable[..., Any]]:
 
     if feat.google:
         try:
-            from sophonic.tools import gcal, gmail
-            for name, fn in {**gcal.TOOLS, **gmail.TOOLS}.items():
+            from sophonic.tools import gcal, gmail, gtasks
+            for name, fn in {**gcal.TOOLS, **gmail.TOOLS, **gtasks.TOOLS}.items():
                 register(name, fn)
         except ImportError:
             pass

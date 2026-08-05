@@ -106,6 +106,68 @@ def test_search_maps_matches(monkeypatch):
     assert result[0]["permalink"] == "https://x/p"
 
 
+def _fake_digest_api(monkeypatch, responses):
+    """Patch _api with a dispatch that also keys conversations.history/getPermalink by channel."""
+    def fake(method, params, token, d_cookie):
+        key = method
+        if method in ("conversations.info", "conversations.history", "chat.getPermalink"):
+            key = f"{method}:{params.get('channel')}"
+        elif method == "users.info":
+            key = f"users.info:{params.get('user')}"
+        return responses[key]
+    monkeypatch.setattr(slack_local, "_api", fake)
+
+
+def test_unread_digest_splits_actionable_and_informational(monkeypatch):
+    monkeypatch.setattr(slack_local, "_get_credentials", lambda: ("xoxc-t", "xoxd-c"))
+    _fake_digest_api(monkeypatch, {
+        "client.counts": {
+            "ok": True,
+            "channels": [
+                {"id": "C1", "has_unreads": True, "mention_count": 0},  # informational
+                {"id": "C2", "has_unreads": True, "mention_count": 2},  # actionable (mention)
+            ],
+            "mpims": [],
+            "ims": [{"id": "D1", "has_unreads": True, "mention_count": 0}],  # actionable (DM)
+        },
+        "conversations.info:C1": {"ok": True, "channel": {"name": "general"}},
+        "conversations.info:C2": {"ok": True, "channel": {"name": "incidents"}},
+        "conversations.info:D1": {"ok": True, "channel": {"user": "U1"}},
+        "users.info:U1": {"ok": True, "user": {"real_name": "Alice"}},
+        "users.info:U2": {"ok": True, "user": {"real_name": "Bob"}},
+        "conversations.history:C1": {"ok": True, "messages": [
+            {"user": "U2", "text": "newer", "ts": "2"},
+            {"user": "U2", "text": "older", "ts": "1"},
+        ]},
+        "conversations.history:C2": {"ok": True, "messages": [{"user": "U2", "text": "prod is down", "ts": "5"}]},
+        "conversations.history:D1": {"ok": True, "messages": [{"user": "U1", "text": "ping you", "ts": "9"}]},
+        "chat.getPermalink:C1": {"ok": True, "permalink": "https://slack/C1"},
+        "chat.getPermalink:C2": {"ok": True, "permalink": "https://slack/C2"},
+        "chat.getPermalink:D1": {"ok": True, "permalink": "https://slack/D1"},
+    })
+
+    digest = slack_local.unread_digest()
+    info_channels = {e["channel"] for e in digest["informational"]}
+    action_channels = {e["channel"] for e in digest["actionable"]}
+
+    assert info_channels == {"#general"}
+    assert action_channels == {"#incidents", "@Alice"}  # mention channel + DM
+
+    general = next(e for e in digest["informational"] if e["channel"] == "#general")
+    assert [m["text"] for m in general["messages"]] == ["older", "newer"]  # chronological
+    assert general["messages"][0]["user"] == "Bob"                         # user resolved
+    assert general["latest"] == "newer"
+    assert general["permalink"] == "https://slack/C1"
+
+
+def test_unread_digest_needs_auth(monkeypatch):
+    def raise_auth():
+        raise slack_local.SlackAuthError("no cookie")
+    monkeypatch.setattr(slack_local, "_get_credentials", raise_auth)
+    result = slack_local.unread_digest()
+    assert result["needs_auth"] is True
+
+
 def test_unread_needs_auth_when_no_session(monkeypatch):
     def raise_auth():
         raise slack_local.SlackAuthError("no cookie")

@@ -1,4 +1,4 @@
-"""Akashic CLI — Typer app with feature-gated subcommands."""
+"""Sophonic CLI — Typer app with feature-gated subcommands."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ console = Console()
 
 @app.command()
 def ask(prompt: str = typer.Argument(..., help="Natural-language question or request")):
-    """Ask Akashic anything — uses the full tool-use loop with Claude."""
+    """Ask Sophonic anything — uses the full tool-use loop with Claude."""
     from sophonic.llm import ask as _ask
     console.print("[dim]Thinking...[/dim]")
     result = _ask(prompt)
@@ -77,8 +77,14 @@ def _print_tasks(heading: str, tasks: list) -> None:
 
 @app.command()
 def daily():
-    """Print today's daily note (creates it if missing)."""
-    from sophonic.tools.obsidian import get_daily_note
+    """Create today's daily note — with schedule, rolled-over tasks, and a due-today agenda — and print it."""
+    from sophonic.tools.obsidian import build_daily_note, get_daily_note
+    result = build_daily_note()
+    if result.get("created"):
+        console.print(
+            f"[green]Created[/green] {result['file']} — "
+            f"{result['events']} event(s), {result['rolled']} rolled over, {result['due_today']} due today"
+        )
     console.print(Markdown(get_daily_note()))
 
 
@@ -135,6 +141,91 @@ def tasks(
         return
     for t in results:
         console.print(f"  {t['text']}  [dim]{t.get('file','')}[/dim]")
+
+
+# ── actions ("start my day" brief: Zoom + Google Tasks + Slack) ─────────────────
+
+def _emit_brief(result: dict) -> None:
+    """Print the start_day summary: per-source counts, warnings, and the Slack digest."""
+    ta = result["tasks_added"]
+    verb = "Would add" if result["dry_run"] else "Added"
+    if result.get("daily_note"):
+        console.print(
+            f"[bold]Daily note:[/bold] {result['daily_note']}  "
+            f"[dim]({result.get('rolled_over', 0)} rolled over)[/dim]"
+        )
+    console.print(
+        f"[bold]{verb}:[/bold] {ta['zoom']} Zoom · {ta['gtasks']} Google Tasks · {ta['slack']} Slack reply"
+    )
+    for s in result["sources"]:
+        if not s["ok"]:
+            console.print(f"  [yellow]⚠ {s['name']}:[/yellow] {s['detail']}")
+            if s.get("run"):
+                console.print(f"    [dim]fix:[/dim] {s['run']}")
+    if result.get("slack_summary"):
+        console.print("\n[bold]Slack[/bold]")
+        console.print(Markdown(result["slack_summary"]))
+
+
+@app.command()
+def actions(
+    on: Optional[str] = typer.Option(None, "--on", help="Zoom window: single day (ISO or natural, e.g. 'yesterday')"),
+    since: Optional[str] = typer.Option(None, "--since", help="Zoom window: range start (ISO or natural)"),
+    until: Optional[str] = typer.Option(None, "--until", help="Zoom window: range end (ISO or natural)"),
+    days: Optional[int] = typer.Option(None, "--days", help="Zoom window: last N days including today"),
+    owner: Optional[str] = typer.Option(None, "--owner", help="Zoom: only items whose text contains this"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing"),
+    skip_zoom: bool = typer.Option(False, "--skip-zoom", help="Skip Zoom action items"),
+    skip_tasks: bool = typer.Option(False, "--skip-tasks", help="Skip Google Tasks"),
+    skip_slack: bool = typer.Option(False, "--skip-slack", help="Skip Slack"),
+):
+    """Start my day: build today's note and merge Zoom action items, Google Tasks, and Slack.
+
+    Ensures today's daily note (schedule + rolled-over incompletes), then pulls Zoom meeting
+    action items and open Google Tasks into ## Tasks, turns Slack DMs/@-mentions into reply
+    tasks, and summarizes other unread Slack channels into a refreshable ## Slack section.
+    Safe to re-run — everything is deduped. Zoom defaults to today's meetings.
+    """
+    from sophonic.daybrief import start_day
+    result = start_day(
+        on=on, since=since, until=until, days=days, owner=owner, dry_run=dry_run,
+        skip_zoom=skip_zoom, skip_tasks=skip_tasks, skip_slack=skip_slack,
+    )
+    _emit_brief(result)
+
+
+def _pull_action_items(
+    on: Optional[str],
+    since: Optional[str],
+    until: Optional[str],
+    days: Optional[int],
+    owner: Optional[str],
+    dry_run: bool,
+) -> None:
+    """Shared body for `actions` and `zoom action-items`: pull + report."""
+    from sophonic.config import load_config
+    if not load_config().features.zoom:
+        console.print("[red]Zoom integration is disabled in config.[/red]")
+        raise typer.Exit(1)
+    from sophonic.tools.zoom import action_items
+    result = action_items(on=on, since=since, until=until, days=days, owner=owner, dry_run=dry_run)
+    if "needs_auth" in result:
+        console.print(f"[yellow]Not authenticated. Run:[/yellow] {result['run']}")
+        return
+    if "error" in result:
+        console.print(f"[red]Error:[/red] {result['error']}")
+        raise typer.Exit(1)
+    if "message" in result:
+        console.print(f"[dim]{result['message']}[/dim]")
+        return
+    r = result["range"]
+    verb = "Would add" if result["dry_run"] else "Added"
+    console.print(
+        f"[bold]{verb} {result['count']} action item(s)[/bold] "
+        f"from {result['meetings_scanned']} meeting(s) ({r['start']} → {r['end']})"
+    )
+    for e in result["action_items"]:
+        console.print(f"  - {e['item']}  [dim]{e.get('meeting') or ''}[/dim]")
 
 
 # ── tool dispatch (registry passthrough — powers the MCP-free plugin) ──────────
@@ -258,6 +349,19 @@ def zoom_notes_cmd(limit: int = typer.Option(20, "--limit")):
             console.print(f"[dim]{item['message']}[/dim]")
             return
         console.print(f"  {item.get('date') or '':10}  {item.get('meeting', item.get('title',''))}  [dim]{item.get('id','')}[/dim]")
+
+
+@zoom_app.command("action-items")
+def zoom_action_items_cmd(
+    on: Optional[str] = typer.Option(None, "--on", help="Single day (ISO or natural, e.g. 2026-08-03 or 'yesterday')"),
+    since: Optional[str] = typer.Option(None, "--since", help="Range start (ISO or natural language)"),
+    until: Optional[str] = typer.Option(None, "--until", help="Range end (ISO or natural language)"),
+    days: Optional[int] = typer.Option(None, "--days", help="Last N days including today"),
+    owner: Optional[str] = typer.Option(None, "--owner", help="Only items whose text contains this (e.g. your name)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Preview without writing tasks"),
+):
+    """Pull action items from Zoom meeting notes into today's tasks (defaults to today's meetings)."""
+    _pull_action_items(on, since, until, days, owner, dry_run)
 
 
 @zoom_app.command("save")

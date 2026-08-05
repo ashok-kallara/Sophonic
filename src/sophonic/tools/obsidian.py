@@ -37,6 +37,95 @@ def get_daily_note(for_date: date | None = None) -> str:
     return ensure_daily_note(for_date).read_text(encoding="utf-8")
 
 
+# ── Enriched daily-note builder (schedule + rolled-over tasks + due-today agenda) ─
+
+def _today_events(for_date: date) -> list[dict[str, Any]] | None:
+    """Calendar events for a date. Returns None when Google is off, [] when unavailable."""
+    if not load_config().features.google:
+        return None
+    try:
+        from sophonic.tools.gcal import events_range
+        return events_range(for_date, for_date)
+    except Exception:
+        # Calendar auth/network failure must never block note creation.
+        return []
+
+
+def _format_event_line(event: dict[str, Any]) -> str:
+    start = str(event.get("start") or "")
+    # Timed events look like 2026-08-03T09:00:00-04:00; all-day like 2026-08-03.
+    when = start[11:16] if "T" in start else "all-day"
+    title = event.get("title", "(No title)")
+    line = f"- {when} — {title}"
+    loc = event.get("location")
+    return f"{line} @ {loc}" if loc else line
+
+
+def _due_today_agenda(for_date: date, exclude: set[str]) -> list[str]:
+    """Vault-wide tasks due on for_date, rendered as backlink references.
+
+    Referenced (not copied as live checkboxes) so the same task isn't duplicated
+    across notes for the Obsidian Tasks plugin. `exclude` skips task lines already
+    carried into the note (e.g. rolled-over incompletes).
+    """
+    target = for_date.isoformat()
+    lines: list[str] = []
+    for t in list_tasks(filter="all"):
+        if t.get("due") != target or t["text"] in exclude:
+            continue
+        body = re.sub(r"^- \[ \]\s*", "", t["text"]).strip()
+        home = t["file"].removesuffix(".md")
+        lines.append(f"- {body} ([[{home}]])")
+    return lines
+
+
+def build_daily_note(for_date: date | None = None) -> dict[str, Any]:
+    """Create the daily note enriched with schedule, rolled-over tasks, and a due-today agenda.
+
+    Idempotent: an existing note is never overwritten (returns created=False).
+    """
+    from datetime import timedelta
+
+    d = for_date or date.today()
+    path = daily_note_path(d)
+    if path.exists():
+        return {
+            "created": False,
+            "file": str(path.relative_to(vault_root())),
+            "message": "Daily note already exists",
+        }
+
+    ensure_daily_note(d)  # bare template
+
+    # 1) Carry yesterday's incomplete tasks forward into ## Tasks (live checkboxes).
+    rolled = roll_over(from_date=d - timedelta(days=1), to_date=d)
+    rolled_texts = set(rolled.get("tasks", []))
+
+    content = path.read_text(encoding="utf-8")
+
+    # 2) Schedule — calendar events, inserted before ## Tasks (omitted if Google is off).
+    events = _today_events(d)
+    if events is not None:
+        event_lines = [_format_event_line(e) for e in events] or ["- _No events_"]
+        schedule = "## Schedule\n" + "\n".join(event_lines) + "\n\n"
+        content = content.replace("## Tasks", schedule + "## Tasks", 1)
+
+    # 3) Due-today agenda — references to tasks living elsewhere, inserted before ## Notes.
+    agenda = _due_today_agenda(d, exclude=rolled_texts)
+    if agenda:
+        block = "## Due Today\n" + "\n".join(agenda) + "\n\n"
+        content = content.replace("## Notes", block + "## Notes", 1)
+
+    path.write_text(content, encoding="utf-8")
+    return {
+        "created": True,
+        "file": str(path.relative_to(vault_root())),
+        "events": len(events) if events is not None else 0,
+        "rolled": rolled.get("rolled", 0),
+        "due_today": len(agenda),
+    }
+
+
 # ── Task operations ───────────────────────────────────────────────────────────
 
 def _format_task_line(
@@ -230,6 +319,32 @@ def complete_task(file: str, line_text: str) -> dict[str, Any]:
 
 # ── Note operations ───────────────────────────────────────────────────────────
 
+def upsert_section(heading: str, body: str, note_date: date | None = None) -> dict[str, Any]:
+    """Insert or replace a `## {heading}` section in the daily note.
+
+    Replaces the block from the heading up to the next `## ` heading (or end of file),
+    so a refreshable snapshot (e.g. Slack unread) updates in place instead of stacking
+    across runs. Creates the note (and section) if absent.
+    """
+    path = ensure_daily_note(note_date)
+    content = path.read_text(encoding="utf-8")
+    block = f"## {heading}\n{body.rstrip()}\n"
+
+    lines = content.splitlines(keepends=True)
+    start = next((i for i, ln in enumerate(lines) if ln.strip() == f"## {heading}"), None)
+
+    if start is None:
+        # Append the section, ensuring a blank-line separator before it.
+        sep = "" if content.endswith("\n\n") or not content else ("\n" if content.endswith("\n") else "\n\n")
+        path.write_text(content + sep + block + "\n", encoding="utf-8")
+        return {"section": heading, "action": "inserted", "file": str(path.relative_to(vault_root()))}
+
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    new_content = "".join(lines[:start]) + block + "".join(lines[end:])
+    path.write_text(new_content, encoding="utf-8")
+    return {"section": heading, "action": "replaced", "file": str(path.relative_to(vault_root()))}
+
+
 def read_note(path: str) -> str:
     full = vault_root() / path
     if not full.exists():
@@ -346,6 +461,8 @@ TOOLS: dict[str, Any] = {
     "obsidian_rollover": roll_over,
     "obsidian_complete_task": complete_task,
     "obsidian_daily_note": get_daily_note,
+    "obsidian_build_daily_note": build_daily_note,
+    "obsidian_upsert_section": upsert_section,
     "obsidian_read_note": read_note,
     "obsidian_write_note": write_note,
     "obsidian_append_note": append_note,

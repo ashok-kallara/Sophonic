@@ -231,6 +231,99 @@ def unread() -> list[dict[str, Any]]:
     return out or [{"message": "No unread items"}]
 
 
+def _user_name(uid: str, token: str, d_cookie: str, cache: dict[str, str]) -> str:
+    """Resolve a Slack user id to a display name, memoized per call."""
+    if not uid:
+        return ""
+    if uid in cache:
+        return cache[uid]
+    info = _api("users.info", {"user": uid}, token, d_cookie)
+    name = uid
+    if info.get("ok"):
+        u = info["user"]
+        name = u.get("real_name") or u.get("name") or uid
+    cache[uid] = name
+    return name
+
+
+def _conversation_digest(
+    cid: str, kind: str, mentions: int, last_read: str | None,
+    per_channel: int, token: str, d_cookie: str, cache: dict[str, str],
+) -> dict[str, Any]:
+    """Recent message content + metadata for one unread conversation."""
+    channel = _resolve_name(cid, kind, token, d_cookie)
+    params: dict[str, Any] = {"channel": cid, "limit": per_channel}
+    if last_read:
+        params["oldest"] = last_read
+    hist = _api("conversations.history", params, token, d_cookie)
+    raw = hist.get("messages", []) if hist.get("ok") else []
+
+    msgs: list[dict[str, Any]] = []
+    for m in reversed(raw):  # history is newest-first; present chronologically
+        if m.get("subtype"):  # skip joins/leaves/other system messages
+            continue
+        msgs.append({
+            "user": _user_name(m.get("user", ""), token, d_cookie, cache),
+            "text": (m.get("text") or "")[:500],
+            "ts": m.get("ts", ""),
+        })
+
+    permalink = ""
+    if msgs:
+        pl = _api("chat.getPermalink", {"channel": cid, "message_ts": msgs[-1]["ts"]}, token, d_cookie)
+        if pl.get("ok"):
+            permalink = pl.get("permalink", "")
+
+    return {
+        "channel": channel,
+        "type": kind,
+        "mentions": mentions,
+        "latest": msgs[-1]["text"] if msgs else "",
+        "permalink": permalink,
+        "messages": msgs,
+    }
+
+
+def unread_digest(per_channel: int = 8, max_channels: int = 25) -> dict[str, Any]:
+    """Unread Slack conversations with recent content, split into actionable vs informational.
+
+    Actionable = DMs or conversations with @-mentions (likely need a reply). Informational =
+    other unread channels. Returns {"actionable": [...], "informational": [...]}, each entry
+    carrying recent messages, the latest snippet, mention count, and a best-effort permalink.
+    """
+    try:
+        token, d_cookie = _get_credentials()
+    except SlackAuthError as exc:
+        return {**_NEEDS_AUTH, "detail": str(exc)}
+
+    counts = _api("client.counts", {}, token, d_cookie)
+    if not counts.get("ok"):
+        if counts.get("error") == "invalid_auth":
+            return dict(_NEEDS_AUTH)
+        return {"error": counts.get("error", "unknown")}
+
+    cache: dict[str, str] = {}
+    actionable: list[dict[str, Any]] = []
+    informational: list[dict[str, Any]] = []
+    processed = 0
+
+    for kind, key in (("channel", "channels"), ("mpim", "mpims"), ("im", "ims")):
+        for item in counts.get(key, []):
+            if not item.get("has_unreads"):
+                continue
+            if processed >= max_channels:
+                break
+            processed += 1
+            mentions = item.get("mention_count", 0)
+            entry = _conversation_digest(
+                item.get("id", ""), kind, mentions, item.get("last_read"),
+                per_channel, token, d_cookie, cache,
+            )
+            (actionable if (kind == "im" or mentions > 0) else informational).append(entry)
+
+    return {"actionable": actionable, "informational": informational}
+
+
 def search(query: str) -> list[dict[str, Any]]:
     """Search Slack messages (via the search.messages API)."""
     try:
@@ -260,5 +353,6 @@ def search(query: str) -> list[dict[str, Any]]:
 
 TOOLS: dict[str, Any] = {
     "slack_unread": unread,
+    "slack_unread_digest": unread_digest,
     "slack_search": search,
 }
