@@ -14,6 +14,16 @@ def test_parse_cookies_to_playwright_dicts():
     assert all(c["domain"] == ".zoom.us" and c["path"] == "/" and c["secure"] for c in cookies)
 
 
+def test_parse_cookies_strips_leading_cookie_header_label():
+    from sophonic.tools.zoom import _parse_cookies
+
+    # Pasting the whole request-header line, label included, must still parse cleanly.
+    cookies = _parse_cookies("Cookie: _zm_ssid=abc; zm_aid=def")
+    names = {c["name"]: c["value"] for c in cookies}
+    assert names == {"_zm_ssid": "abc", "zm_aid": "def"}
+    assert all(not c["name"].lower().startswith("cookie") for c in cookies)
+
+
 def test_split_title_extracts_meeting_and_date():
     from sophonic.tools.zoom import _split_title
 
@@ -24,6 +34,55 @@ def test_split_title_extracts_meeting_and_date():
     meeting, iso = _split_title("Untitled note")
     assert meeting == "Untitled note"
     assert iso is None
+
+
+class _Resp:
+    def __init__(self, status, location=""):
+        self.status_code = status
+        self.headers = {"location": location} if location else {}
+        self.is_redirect = 300 <= status < 400 and bool(location)
+
+
+def test_check_auth_valid_when_200(monkeypatch):
+    from sophonic.tools import zoom
+
+    monkeypatch.setenv("ZOOM_COOKIES", "_zm=abc")
+    monkeypatch.setattr(zoom.httpx, "get", lambda *a, **k: _Resp(200))
+    result = zoom.check_auth()
+    assert result["ok"] is True
+
+
+def test_check_auth_expired_on_signin_redirect(monkeypatch):
+    from sophonic.tools import zoom
+
+    monkeypatch.setenv("ZOOM_COOKIES", "_zm=abc")
+    monkeypatch.setattr(zoom.httpx, "get", lambda *a, **k: _Resp(302, "https://zoom.us/signin"))
+    result = zoom.check_auth()
+    assert result["ok"] is False
+    assert "expired" in result["detail"]
+
+
+def test_check_auth_missing_cookies(monkeypatch):
+    from sophonic.tools import zoom
+
+    monkeypatch.delenv("ZOOM_COOKIES", raising=False)
+    result = zoom.check_auth()
+    assert result["ok"] is False
+    assert "not set" in result["detail"]
+
+
+def test_check_auth_handles_request_error(monkeypatch):
+    from sophonic.tools import zoom
+
+    monkeypatch.setenv("ZOOM_COOKIES", "_zm=abc")
+
+    def boom(*a, **k):
+        raise zoom.httpx.HTTPError("network down")
+
+    monkeypatch.setattr(zoom.httpx, "get", boom)
+    result = zoom.check_auth()
+    assert result["ok"] is False
+    assert "failed" in result["detail"]
 
 
 def test_notes_needs_cookies(monkeypatch):
@@ -70,6 +129,20 @@ def test_extract_action_items_spans_adjacent_headings():
     assert _extract_action_items(text) == ["Do A", "Do B"]
 
 
+def test_extract_action_items_drops_narrative_prose():
+    from sophonic.tools.zoom import _extract_action_items
+
+    # Only bulleted/numbered entries under the heading become tasks; prose is dropped.
+    text = (
+        "Action Items\n"
+        "The team agreed to move forward with the plan.\n"   # prose, not a task
+        "- Ship the doc\n"
+        "Owner will coordinate offline.\n"                    # prose, not a task
+        "- Book the room\n"
+    )
+    assert _extract_action_items(text) == ["Ship the doc", "Book the room"]
+
+
 def test_action_items_needs_cookies(monkeypatch):
     from sophonic.tools import zoom
 
@@ -95,15 +168,15 @@ def test_action_items_defaults_to_today(use_fixture_vault, monkeypatch):
     assert result["meetings_scanned"] == 1  # only today's meeting is in range
     assert result["count"] == 1
     content = get_daily_note()
-    assert "Do the thing for A" in content
+    # Grouped under a dedicated section with a linked meeting subheading.
+    assert "## Meeting Action Items" in content
+    assert "### [Standup — 2026-08-03](https://docs.zoom.us/doc/A)" in content
+    assert "- [ ] Do the thing for A #zoom" in content
     assert "Do the thing for B" not in content
-    assert "#zoom" in content
-    # Task line references the source meeting as a clickable link.
-    assert "[Standup — 2026-08-03](https://docs.zoom.us/doc/A)" in content
 
 
 @freeze_time("2026-08-03")
-def test_action_items_reference_falls_back_to_plain_text(use_fixture_vault, monkeypatch):
+def test_action_items_heading_falls_back_to_plain_text(use_fixture_vault, monkeypatch):
     from sophonic.tools import zoom
     from sophonic.tools.obsidian import get_daily_note
 
@@ -112,7 +185,9 @@ def test_action_items_reference_falls_back_to_plain_text(use_fixture_vault, monk
     monkeypatch.setattr(zoom, "note", lambda doc_id: {"id": doc_id, "text": "Action Items\n- Do the thing"})
 
     zoom.action_items()
-    assert "Do the thing (Standup — 2026-08-03)" in get_daily_note()
+    content = get_daily_note()
+    assert "### Standup — 2026-08-03" in content        # plain heading, no link
+    assert "- [ ] Do the thing #zoom" in content
 
 
 @freeze_time("2026-08-03")
@@ -130,6 +205,7 @@ def test_action_items_last_3_days(use_fixture_vault, monkeypatch):
     result = zoom.action_items(days=3)
     assert result["range"] == {"start": "2026-08-01", "end": "2026-08-03"}
     assert result["meetings_scanned"] == 2  # A and B, not C
+    assert len(result["groups"]) == 2       # one group per in-range meeting
 
 
 @freeze_time("2026-08-03")
@@ -163,7 +239,7 @@ def test_action_items_owner_filter(use_fixture_vault, monkeypatch):
 
     result = zoom.action_items(owner="ashok")
     assert result["count"] == 1
-    assert [e["item"] for e in result["action_items"]] == ["Ashok to review PR"]
+    assert result["groups"][0]["items"] == ["Ashok to review PR"]
 
 
 @freeze_time("2026-07-31")

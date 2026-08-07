@@ -224,8 +224,10 @@ def _pull_action_items(
         f"[bold]{verb} {result['count']} action item(s)[/bold] "
         f"from {result['meetings_scanned']} meeting(s) ({r['start']} → {r['end']})"
     )
-    for e in result["action_items"]:
-        console.print(f"  - {e['item']}  [dim]{e.get('meeting') or ''}[/dim]")
+    for g in result.get("groups", []):
+        console.print(f"  [bold]{g['meeting'] or 'Zoom meeting'}[/bold] [dim]{g.get('date') or ''}[/dim]")
+        for item in g["items"]:
+            console.print(f"    - {item}")
 
 
 # ── tool dispatch (registry passthrough — powers the MCP-free plugin) ──────────
@@ -420,13 +422,15 @@ def run_auth_zoom() -> None:
     """Zoom uses pasted session cookies (browser login can't be automated in Island)."""
     import os
     if os.environ.get("ZOOM_COOKIES"):
-        console.print("[green]Zoom cookies are set.[/green] Try: sophonic zoom transcripts")
+        console.print("[green]Zoom cookies are set.[/green] Try: sophonic zoom notes")
         return
     console.print(
-        "Zoom needs your web session cookies (Island blocks browser automation).\n"
-        "1. Log in to [cyan]https://zoom.us[/cyan] in your browser.\n"
-        "2. Copy the zoom.us cookies (as 'name=value; name2=value2').\n"
-        "3. Run: [cyan]sophonic config set-secret ZOOM_COOKIES --stdin[/cyan] and paste them."
+        "Zoom needs your web session cookies (browser automation is blocked in managed browsers).\n"
+        "1. Log in to [cyan]https://zoom.us[/cyan], then open your browser's DevTools → [bold]Network[/bold] tab.\n"
+        "2. Click any request to [cyan]zoom.us[/cyan], find [bold]Request Headers[/bold], and copy the whole\n"
+        "   [bold]Cookie:[/bold] value (the [dim]name=value; name2=value2[/dim] string — a leading 'Cookie:' is fine).\n"
+        "3. Run [cyan]sophonic config set-secret ZOOM_COOKIES --stdin[/cyan], paste on one line, then press [bold]Return[/bold].\n"
+        "[dim]Tip: or pipe it — [/dim][cyan]pbpaste | sophonic config set-secret ZOOM_COOKIES --stdin[/cyan]"
     )
 
 
@@ -613,11 +617,12 @@ def _doctor() -> dict:
         add("slack", ok, detail,
             "Sign in to the Slack desktop app; then `sophonic auth slack` (approve the Keychain prompt)")
 
-    # zoom — uses pasted web session cookies (no browser login)
+    # zoom — pasted web session cookies; probe validity (not just presence)
     if cfg.features.zoom:
-        has_cookies = bool(os.environ.get("ZOOM_COOKIES"))
-        add("zoom", has_cookies, "ZOOM_COOKIES " + ("set" if has_cookies else "missing"),
-            "sophonic config set-secret ZOOM_COOKIES --stdin  (paste your zoom.us cookies)")
+        from sophonic.tools.zoom import check_auth
+        probe = check_auth()
+        add("zoom", probe["ok"], probe["detail"],
+            "sophonic config set-secret ZOOM_COOKIES --stdin  (paste the zoom.us 'Cookie:' request header)")
 
     # gitlab
     if cfg.features.gitlab:

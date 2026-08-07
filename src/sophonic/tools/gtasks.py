@@ -71,6 +71,17 @@ def list_open_tasks(max_lists: int = 20, max_tasks: int = 100) -> Any:
         from googleapiclient.errors import HttpError
 
         if isinstance(exc, HttpError) and getattr(exc, "resp", None) and exc.resp.status == 403:
+            raw = (exc.content or b"").decode("utf-8", "replace")
+            # A 403 can mean "API not enabled in the Cloud project" (different fix) or
+            # "token lacks the scope". Distinguish so the user gets the right remedy.
+            if any(k in raw for k in ("SERVICE_DISABLED", "accessNotConfigured", "has not been used")):
+                return {
+                    "error": (
+                        "Google Tasks API is not enabled for your OAuth project. Enable it at "
+                        "https://console.cloud.google.com/apis/library/tasks.googleapis.com "
+                        "and retry (allow a minute to propagate)."
+                    ),
+                }
             return {
                 "needs_auth": True,
                 "detail": "Google Tasks needs the tasks.readonly scope, which your token lacks.",

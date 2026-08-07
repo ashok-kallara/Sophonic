@@ -13,7 +13,7 @@ tools:
 
 - `day_start(on, since, until, days, owner, dry_run, skip_zoom, skip_tasks, skip_slack)`:
   1. Ensures today's daily note (calendar schedule + rolled-over incompletes).
-  2. Merges Zoom meeting action items into `## Tasks` (window: `on`/`since`/`until`/`days`, default today; `owner` filters).
+  2. Writes Zoom meeting action items to a `## Meeting Action Items` section grouped by meeting (window: `on`/`since`/`until`/`days`, default today; `owner` filters). Only bulleted Action Items/Next Steps become tasks.
   3. Merges open Google Tasks into `## Tasks` (with due dates).
   4. Turns Slack DMs/@-mentions into `Reply to …` tasks; summarizes other unread channels into a refreshable `## Slack` section.
   Returns per-source counts and a `sources` status list (each `{name, ok, detail}`); a disabled/unauth/failing source is skipped, never fatal.

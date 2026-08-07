@@ -67,3 +67,20 @@ def test_list_open_tasks_scope_error_returns_needs_auth(monkeypatch):
     result = gtasks.list_open_tasks()
     assert result["needs_auth"] is True
     assert "tasks.readonly" in result["run"]
+
+
+def test_list_open_tasks_api_disabled_returns_enable_hint(monkeypatch):
+    from sophonic.tools import gtasks
+    from googleapiclient.errors import HttpError
+
+    resp = MagicMock()
+    resp.status = 403
+
+    def boom():
+        raise HttpError(resp=resp, content=b'{"error":{"status":"PERMISSION_DENIED","message":"Google Tasks API has not been used in project 123 before or it is disabled. SERVICE_DISABLED"}}')
+
+    monkeypatch.setattr(gtasks, "_service", boom)
+    result = gtasks.list_open_tasks()
+    assert "needs_auth" not in result
+    assert "not enabled" in result["error"]
+    assert "console.cloud.google.com" in result["error"]

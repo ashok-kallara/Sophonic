@@ -84,8 +84,6 @@ def build_daily_note(for_date: date | None = None) -> dict[str, Any]:
 
     Idempotent: an existing note is never overwritten (returns created=False).
     """
-    from datetime import timedelta
-
     d = for_date or date.today()
     path = daily_note_path(d)
     if path.exists():
@@ -97,8 +95,8 @@ def build_daily_note(for_date: date | None = None) -> dict[str, Any]:
 
     ensure_daily_note(d)  # bare template
 
-    # 1) Carry yesterday's incomplete tasks forward into ## Tasks (live checkboxes).
-    rolled = roll_over(from_date=d - timedelta(days=1), to_date=d)
+    # 1) Carry the last prior day's incomplete tasks forward into ## Tasks (live checkboxes).
+    rolled = roll_over(to_date=d)
     rolled_texts = set(rolled.get("tasks", []))
 
     content = path.read_text(encoding="utf-8")
@@ -257,15 +255,40 @@ def incomplete_yesterday() -> list[dict[str, Any]]:
     return results
 
 
+def _latest_prior_daily_note(before: date) -> date | None:
+    """Date of the most recent daily note strictly before `before` (None if none exist)."""
+    cfg = load_config().vault
+    daily_dir = vault_root() / cfg.daily_dir
+    if not daily_dir.is_dir():
+        return None
+    prefix = cfg.daily_prefix
+    best: date | None = None
+    for f in daily_dir.glob(f"{prefix}*.md"):
+        stem = f.name[len(prefix):-len(".md")]
+        try:
+            d = date.fromisoformat(stem)
+        except ValueError:
+            continue
+        if d < before and (best is None or d > best):
+            best = d
+    return best
+
+
 def roll_over(
     from_date: date | None = None,
     to_date: date | None = None,
 ) -> dict[str, Any]:
-    """Copy incomplete tasks from from_date's note into to_date's note. Idempotent."""
-    from sophonic.dates import today, yesterday
+    """Copy incomplete tasks from a prior daily note into to_date's note. Idempotent.
 
-    src_date = from_date or yesterday()
+    When `from_date` is omitted, the most recent daily note *before* to_date is used —
+    so a missing yesterday falls back to the last day you actually took notes.
+    """
+    from sophonic.dates import today
+
     dst_date = to_date or today()
+    src_date = from_date if from_date is not None else _latest_prior_daily_note(dst_date)
+    if src_date is None:
+        return {"rolled": 0, "message": "No previous daily note found"}
 
     src_path = daily_note_path(src_date)
     if not src_path.exists():
@@ -343,6 +366,73 @@ def upsert_section(heading: str, body: str, note_date: date | None = None) -> di
     new_content = "".join(lines[:start]) + block + "".join(lines[end:])
     path.write_text(new_content, encoding="utf-8")
     return {"section": heading, "action": "replaced", "file": str(path.relative_to(vault_root()))}
+
+
+def _insert_task_under(content: str, section: str, heading: str, task_line: str) -> str:
+    """Insert task_line under `### {heading}` within `## {section}`, creating either if absent."""
+    lines = content.splitlines()
+    sec = f"## {section}"
+    s = next((i for i, l in enumerate(lines) if l.strip() == sec), None)
+
+    if s is None:
+        # Create the section (with its first subheading + item), placed before ## Notes.
+        block = [sec, heading, task_line, ""]
+        notes_idx = next((i for i, l in enumerate(lines) if l.strip() == "## Notes"), None)
+        if notes_idx is not None:
+            lines[notes_idx:notes_idx] = block
+        else:
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.extend([sec, heading, task_line])
+        return "\n".join(lines) + "\n"
+
+    end = next((i for i in range(s + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    h = next((i for i in range(s + 1, end) if lines[i].strip() == heading), None)
+
+    if h is None:  # add a new group subheading at the end of the section
+        at = end
+        while at - 1 > s and lines[at - 1].strip() == "":
+            at -= 1
+        lines[at:at] = [heading, task_line]
+        return "\n".join(lines) + "\n"
+
+    # append under the existing subheading, before the next ###/## boundary
+    boundary = next((i for i in range(h + 1, len(lines)) if lines[i].startswith(("### ", "## "))), len(lines))
+    at = boundary
+    while at - 1 > h and lines[at - 1].strip() == "":
+        at -= 1
+    lines[at:at] = [task_line]
+    return "\n".join(lines) + "\n"
+
+
+def add_grouped_tasks(
+    section: str,
+    groups: list[dict[str, Any]],
+    tags: list[str] | None = None,
+    note_date: date | None = None,
+) -> dict[str, Any]:
+    """Append checkbox tasks under `## {section}`, grouped by `### {heading}` per group.
+
+    `groups` is a list of {"heading": str, "items": [str]}. Append-only and deduped: an
+    item already present anywhere in the note is skipped (preserves checked state and
+    avoids duplicates on re-runs). Missing section/subheadings are created; the section is
+    placed before ## Notes when present.
+    """
+    path = ensure_daily_note(note_date)
+    tag_suffix = "".join(f" #{t.lstrip('#')}" for t in (tags or []))
+    added = 0
+    for g in groups:
+        heading = f"### {g['heading']}"
+        for item in g.get("items", []):
+            content = path.read_text(encoding="utf-8")
+            if item in content:
+                continue
+            path.write_text(
+                _insert_task_under(content, section, heading, f"- [ ] {item}{tag_suffix}"),
+                encoding="utf-8",
+            )
+            added += 1
+    return {"section": section, "added": added}
 
 
 def read_note(path: str) -> str:

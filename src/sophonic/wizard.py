@@ -141,8 +141,9 @@ def run_init() -> None:
         console.rule("Zoom")
         console.print(
             "  Zoom reads your [bold]AI Companion meeting notes[/bold] via your zoom.us cookies.\n"
-            "  Log in to zoom.us, then run "
-            "[cyan]sophonic config set-secret ZOOM_COOKIES --stdin[/cyan] and paste the cookies."
+            "  Log in to zoom.us, then in DevTools → Network copy the whole [bold]Cookie:[/bold] request\n"
+            "  header from any zoom.us request and run "
+            "[cyan]sophonic config set-secret ZOOM_COOKIES --stdin[/cyan] (paste on one line, press Return)."
         )
 
     # ── gitlab ──────────────────────────────────────────────────────────────

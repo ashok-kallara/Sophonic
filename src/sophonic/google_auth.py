@@ -38,11 +38,26 @@ def _require_desktop_client(secret_file: Path) -> None:
         )
 
 
+def _granted_scopes(token_path: Path) -> set[str]:
+    """Scopes actually granted in a stored token file (empty if missing/unreadable)."""
+    import json
+    try:
+        return set(json.loads(token_path.read_text(encoding="utf-8")).get("scopes", []))
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def _token_covers(token_path: Path, scopes: list[str]) -> bool:
+    """True if the stored token was granted every requested scope."""
+    return set(scopes).issubset(_granted_scopes(token_path))
+
+
 def get_credentials():
     """Return valid Google credentials, running OAuth flow if needed."""
     from google.oauth2.credentials import Credentials
     from google_auth_oauthlib.flow import InstalledAppFlow
     from google.auth.transport.requests import Request
+    from google.auth.exceptions import RefreshError
 
     cfg = load_config().google
     scopes = cfg.scopes
@@ -52,11 +67,22 @@ def get_credentials():
     creds = None
     if token_path.exists():
         creds = Credentials.from_authorized_user_file(str(token_path), scopes)
+        # A stored token only carries the scopes granted at consent time; adding a scope
+        # to config does not expand it, and a refresh cannot add scopes. If the token is
+        # missing any requested scope, discard it so the full consent flow re-runs.
+        if creds and not _token_covers(token_path, scopes):
+            creds = None
 
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+                refreshed = True
+            except RefreshError:
+                # Revoked/expired refresh token, or scopes changed — fall back to consent.
+                creds = None
+        if not refreshed:
             if not secret_file.exists():
                 raise FileNotFoundError(
                     f"Google OAuth client secret not found at {secret_file}. "

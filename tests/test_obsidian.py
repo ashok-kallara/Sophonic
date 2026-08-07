@@ -113,6 +113,39 @@ def test_rollover_is_idempotent(use_fixture_vault):
     assert result2["rolled"] == 0
 
 
+@freeze_time("2026-05-05")
+def test_rollover_uses_latest_prior_note_across_gap(use_fixture_vault):
+    """No note yesterday, but one two days back → roll from the last available day."""
+    from sophonic.tools.obsidian import add_task, ensure_daily_note, roll_over
+
+    add_task("Gap-day task", note_date=date(2026, 5, 3))  # 2 days before today; no 5/4 note
+
+    result = roll_over()  # default: today = 2026-05-05, no from_date
+    assert result["rolled"] == 1
+    assert result["from"] == "2026-05-03"
+    assert result["to"] == "2026-05-05"
+    assert "Gap-day task" in ensure_daily_note(date(2026, 5, 5)).read_text()
+
+
+@freeze_time("2026-05-05")
+def test_rollover_picks_most_recent_of_several(use_fixture_vault):
+    from sophonic.tools.obsidian import add_task, roll_over
+
+    add_task("Older", note_date=date(2026, 5, 1))
+    add_task("Newer", note_date=date(2026, 5, 3))
+    result = roll_over()
+    assert result["from"] == "2026-05-03"   # most recent prior note wins
+    assert result["tasks"] == ["- [ ] Newer"]
+
+
+@freeze_time("2026-05-05")
+def test_rollover_no_prior_note(use_fixture_vault):
+    from sophonic.tools.obsidian import roll_over
+    result = roll_over()
+    assert result["rolled"] == 0
+    assert "No previous daily note" in result["message"]
+
+
 @freeze_time("2026-05-02")
 def test_incomplete_yesterday_finds_tasks(use_fixture_vault):
     from sophonic.tools.obsidian import add_task, incomplete_yesterday
@@ -144,7 +177,7 @@ def test_build_daily_note_enriches(use_fixture_vault, monkeypatch):
     assert "Carry me" in content            # rolled over as a live checkbox
     assert "## Due Today" in content
     assert "Ship it" in content             # referenced in the agenda
-    assert "[[Daily/DAILY-2026-04-20]]" in content  # backlink to its home note
+    assert "DAILY-2026-04-20]]" in content   # backlink to its home note (folder per config)
 
 
 @freeze_time("2026-05-02")
@@ -205,6 +238,52 @@ def test_upsert_section_preserves_following_sections(use_fixture_vault):
     assert "Replaced task" in content
     assert "Keep me" not in content   # section body was replaced
     assert "## Notes" in content      # following section survived
+
+
+@freeze_time("2026-05-02")
+def test_add_grouped_tasks_groups_and_dedupes(use_fixture_vault):
+    from sophonic.tools.obsidian import add_grouped_tasks, ensure_daily_note
+
+    ensure_daily_note()
+    add_grouped_tasks("Meeting Action Items", [
+        {"heading": "[Standup — 2026-05-02](https://z/A)", "items": ["Do A", "Do B"]},
+        {"heading": "1:1 — 2026-05-02", "items": ["Do C"]},
+    ], tags=["zoom"])
+    content = ensure_daily_note().read_text()
+
+    assert "## Meeting Action Items" in content
+    assert "### [Standup — 2026-05-02](https://z/A)" in content
+    assert "- [ ] Do A #zoom" in content
+    assert "- [ ] Do B #zoom" in content
+    assert "### 1:1 — 2026-05-02" in content
+    assert "- [ ] Do C #zoom" in content
+    # Section is placed before ## Notes.
+    assert content.index("## Meeting Action Items") < content.index("## Notes")
+
+    # Re-run: existing items are not duplicated; a new item lands under its meeting.
+    add_grouped_tasks("Meeting Action Items", [
+        {"heading": "[Standup — 2026-05-02](https://z/A)", "items": ["Do A", "Do D"]},
+    ], tags=["zoom"])
+    content = ensure_daily_note().read_text()
+    assert content.count("- [ ] Do A #zoom") == 1
+    assert "- [ ] Do D #zoom" in content
+    assert content.count("### [Standup — 2026-05-02](https://z/A)") == 1
+
+
+@freeze_time("2026-05-02")
+def test_add_grouped_tasks_preserves_checked_items(use_fixture_vault):
+    from sophonic.tools.obsidian import add_grouped_tasks, ensure_daily_note
+
+    ensure_daily_note()
+    add_grouped_tasks("Meeting Action Items", [{"heading": "M — 2026-05-02", "items": ["Task X"]}])
+    note = ensure_daily_note()
+    # User checks it off.
+    note.write_text(note.read_text().replace("- [ ] Task X", "- [x] Task X ✅ 2026-05-02"))
+    # Re-run must not re-add the (now completed) item.
+    add_grouped_tasks("Meeting Action Items", [{"heading": "M — 2026-05-02", "items": ["Task X"]}])
+    content = note.read_text()
+    assert content.count("Task X") == 1
+    assert "- [x] Task X" in content
 
 
 def test_read_write_note(use_fixture_vault):

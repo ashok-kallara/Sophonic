@@ -14,15 +14,23 @@ import re
 from datetime import date
 from typing import Any
 
+import httpx
+
 from sophonic.browser import run_async
 
 _NEEDS_AUTH = {
     "needs_auth": True,
     "run": "sophonic config set-secret ZOOM_COOKIES --stdin",
-    "detail": "Log in to zoom.us in your browser, copy the session cookies, and paste them.",
+    "detail": (
+        "Zoom web session cookies are missing/expired. In your browser, open DevTools "
+        "→ Network, click any request to zoom.us, and copy the whole 'Cookie:' request "
+        "header value; paste it into `sophonic config set-secret ZOOM_COOKIES --stdin`."
+    ),
 }
 
 _NOTES_URL = "https://zoom.us/notes"
+# A gated page: an authenticated session returns 200; an expired/missing one 302s to /signin.
+_AUTH_PROBE_URL = "https://zoom.us/profile"
 _DOC_URL = "https://docs.zoom.us/doc/{doc_id}"
 # meeting notes are titled like "Weekly Sync 2026-07-31 13:33(GMT-4:00)"
 _TITLE_DATE_RE = re.compile(r"\s*(\d{4}-\d{2}-\d{2})[ T]\d{1,2}:\d{2}")
@@ -56,7 +64,15 @@ def _clean_note_text(text: str) -> str:
 
 
 def _parse_cookies(raw: str) -> list[dict[str, Any]]:
-    """Parse a 'name=value; name2=value2' cookie header into Playwright cookie dicts."""
+    """Parse a Cookie request header into Playwright cookie dicts.
+
+    Accepts the raw `Cookie:` request-header value copied from browser DevTools —
+    either the bare `name=value; name2=value2` string or the whole line including a
+    leading `Cookie:` label (which is stripped).
+    """
+    raw = raw.strip()
+    if raw[:7].lower() == "cookie:":  # tolerate a pasted "Cookie: …" header line
+        raw = raw[7:].strip()
     cookies: list[dict[str, Any]] = []
     for part in raw.split(";"):
         part = part.strip()
@@ -176,6 +192,33 @@ async def _fetch_note_async(cookies: list[dict[str, Any]], doc_id: str) -> dict[
 
 # ── public tools ─────────────────────────────────────────────────────────────
 
+def check_auth() -> dict[str, Any]:
+    """Lightweight validity probe for the Zoom web session — no browser.
+
+    Requests a gated page with the pasted cookies: a live session returns 200; an
+    expired or missing session 302-redirects to sign-in. Returns {ok, detail}.
+    """
+    cookies = _zoom_cookies()
+    if not cookies:
+        return {"ok": False, "detail": "ZOOM_COOKIES not set"}
+    cookie_header = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+    try:
+        resp = httpx.get(
+            _AUTH_PROBE_URL,
+            headers={"Cookie": cookie_header},
+            follow_redirects=False,
+            timeout=15,
+        )
+    except httpx.HTTPError as exc:
+        return {"ok": False, "detail": f"probe request failed: {exc}"}
+
+    if resp.status_code == 200:
+        return {"ok": True, "detail": "Zoom web session valid"}
+    if resp.is_redirect and _is_login(resp.headers.get("location", "")):
+        return {"ok": False, "detail": "session expired — cookies redirect to sign-in"}
+    return {"ok": False, "detail": f"unexpected response: HTTP {resp.status_code}"}
+
+
 def notes(limit: int = 20) -> list[dict[str, Any]]:
     """List recent Zoom AI meeting notes (title, meeting, date, id, link)."""
     cookies = _zoom_cookies()
@@ -254,8 +297,9 @@ def _extract_action_items(text: str) -> list[str]:
         if line.startswith("#") or norm in _STOP_HEADINGS:
             break
         m = _BULLET_RE.match(raw)
-        item = (m.group(1) if m else line).strip()
-        item = re.sub(r"^\[[ xX]\]\s*", "", item).strip()  # drop any checkbox marker
+        if not m:
+            continue  # only itemized entries become tasks — skip narrative/summary prose
+        item = re.sub(r"^\[[ xX]\]\s*", "", m.group(1)).strip()  # drop any checkbox marker
         if item:
             items.append(item)
     return items
@@ -289,16 +333,13 @@ def _resolve_range(on, since, until, days, ref: date) -> tuple[date, date]:
     return ref, ref
 
 
-def _meeting_ref(n: dict[str, Any]) -> str:
-    """A traceable reference to the source meeting for a task line.
-
-    Prefers a clickable markdown link to the Zoom note; falls back to plain text.
-    """
+def _meeting_heading(n: dict[str, Any]) -> str:
+    """The `### ` subheading text for a meeting group — a clickable link when available."""
     meeting = n.get("meeting") or "Zoom meeting"
     iso = n.get("date")
     label = f"{meeting} — {iso}" if iso else meeting
     link = n.get("link")
-    return f"[{label}]({link})" if link else f"({label})"
+    return f"[{label}]({link})" if link else label
 
 
 def action_items(
@@ -342,40 +383,53 @@ def action_items(
         if start <= d <= end:
             selected.append(n)
 
-    from sophonic.tools.obsidian import add_task, get_daily_note
+    from sophonic.tools.obsidian import add_grouped_tasks, get_daily_note
 
-    existing = get_daily_note()  # today's note — dedupe target for re-runs
-    seen: set[str] = set()
-    collected: list[dict[str, Any]] = []
+    # Running snapshot of today's note for dedupe (across the note, and across meetings
+    # within this run), so re-runs and repeated action items don't stack up.
+    present = get_daily_note()
+    groups: list[dict[str, Any]] = []
+    total = 0
 
     for n in selected:
         data = note(n["id"])
         if not isinstance(data, dict) or "text" not in data:
             continue
-        ref = _meeting_ref(n)
+        new_items: list[str] = []
         for item in _extract_action_items(data["text"]):
             if owner and owner.lower() not in item.lower():
                 continue
-            key = item.lower()
-            if key in seen or item in existing:
+            if item in present:
                 continue
-            seen.add(key)
-            # Stamp the source meeting into the task line so it's traceable.
-            entry = {"item": item, "meeting": n.get("meeting"), "date": n.get("date"), "ref": ref}
-            if not dry_run:
-                add_task(text=f"{item} {ref}", tags=["zoom"])
-            collected.append(entry)
+            new_items.append(item)
+            present += f"\n- [ ] {item}"  # reserve so within-run duplicates are skipped
+        if not new_items:
+            continue
+        if not dry_run:
+            add_grouped_tasks(
+                "Meeting Action Items",
+                [{"heading": _meeting_heading(n), "items": new_items}],
+                tags=["zoom"],
+            )
+        groups.append({
+            "meeting": n.get("meeting"),
+            "date": n.get("date"),
+            "link": n.get("link"),
+            "items": new_items,
+        })
+        total += len(new_items)
 
     return {
         "range": {"start": start.isoformat(), "end": end.isoformat()},
         "meetings_scanned": len(selected),
-        "action_items": collected,
-        "count": len(collected),
+        "groups": groups,
+        "count": total,
         "dry_run": dry_run,
     }
 
 
 TOOLS: dict[str, Any] = {
+    "zoom_check_auth": check_auth,
     "zoom_notes": notes,
     "zoom_note": note,
     "zoom_save_note": save_note,

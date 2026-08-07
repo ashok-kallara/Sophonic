@@ -242,11 +242,19 @@ via `auth.test`. If the token can't be auto-detected, set `[slack] workspace_hos
 (e.g. `your-org.enterprise.slack.com`) or the `SLACK_XOXC_TOKEN` secret.
 
 **Zoom** reads your **AI Companion meeting notes** (Zoom Docs) using your `zoom.us` web
-session cookies (browser automation is blocked in managed browsers like Island). Log
-into `zoom.us`, copy the cookies as a `name=value; …` string, and store them:
+session cookies (browser automation is blocked in managed browsers like Island). Grab
+them straight from the request header:
+
+1. Log in to `zoom.us`, then open your browser's **DevTools → Network** tab.
+2. Click any request to `zoom.us`, find **Request Headers**, and copy the entire
+   **`Cookie:`** value (the `name=value; name2=value2` string). A leading `Cookie:`
+   label is accepted and stripped, so copying the whole line is fine.
+3. Store it (paste on one line, then press **Return** — it reads a single line, so no Ctrl-D):
 
 ```bash
-sophonic config set-secret ZOOM_COOKIES --stdin   # paste, then Ctrl-D
+sophonic config set-secret ZOOM_COOKIES --stdin
+# ...or pipe it directly:
+pbpaste | sophonic config set-secret ZOOM_COOKIES --stdin
 ```
 
 Then `sophonic zoom notes` lists recent AI notes and `sophonic zoom save <id>` files one
