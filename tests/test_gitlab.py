@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sophonic.config import GitLabConfig
-from sophonic.tools.gitlab import build_tools
+from sophonic.gitlab import build_tools
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ def _tool_call_response(result: Any) -> MagicMock:
 
 # ── build_tools — discovery ───────────────────────────────────────────────────
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_build_tools_discovers_tools_and_prefixes_names(mock_post):
     mock_post.return_value = _tools_list_response([
         {"name": "list_issues", "description": "List issues"},
@@ -56,7 +56,7 @@ def test_build_tools_discovers_tools_and_prefixes_names(mock_post):
     assert len(tools) == 2
 
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_build_tools_sets_doc_from_description(mock_post):
     mock_post.return_value = _tools_list_response([
         {"name": "list_issues", "description": "List project issues"},
@@ -67,7 +67,7 @@ def test_build_tools_sets_doc_from_description(mock_post):
     assert tools["gitlab_list_issues"].__doc__ == "List project issues"
 
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_build_tools_discovery_uses_bearer_auth(mock_post):
     mock_post.return_value = _tools_list_response([])
     build_tools(_cfg(token="glpat-mytoken"))
@@ -76,7 +76,7 @@ def test_build_tools_discovery_uses_bearer_auth(mock_post):
     assert kwargs["headers"]["Authorization"] == "Bearer glpat-mytoken"
 
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_build_tools_discovery_posts_to_mcp_endpoint(mock_post):
     mock_post.return_value = _tools_list_response([])
     build_tools(_cfg(url="https://gitlab.example.com/"))
@@ -88,7 +88,7 @@ def test_build_tools_discovery_posts_to_mcp_endpoint(mock_post):
 
 # ── build_tools — tool call wrapper ──────────────────────────────────────────
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_tool_wrapper_passes_kwargs_as_arguments(mock_post):
     mock_post.side_effect = [
         _tools_list_response([{"name": "list_issues", "description": "List issues"}]),
@@ -105,7 +105,7 @@ def test_tool_wrapper_passes_kwargs_as_arguments(mock_post):
     assert params["arguments"] == {"project": "group/repo", "state": "opened"}
 
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_tool_wrapper_returns_result_field(mock_post):
     expected = [{"iid": 42, "title": "My issue"}]
     mock_post.side_effect = [
@@ -119,7 +119,7 @@ def test_tool_wrapper_returns_result_field(mock_post):
     assert result == expected
 
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_tool_wrapper_raises_on_mcp_error(mock_post):
     error_resp = MagicMock()
     error_resp.json.return_value = {
@@ -141,7 +141,7 @@ def test_tool_wrapper_raises_on_mcp_error(mock_post):
 
 # ── build_tools — graceful degradation ───────────────────────────────────────
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_build_tools_connect_error_returns_empty_dict(mock_post):
     import httpx
 
@@ -155,7 +155,7 @@ def test_build_tools_connect_error_returns_empty_dict(mock_post):
     assert any("unreachable" in str(w.message).lower() for w in caught)
 
 
-@patch("sophonic.tools.gitlab.httpx.post")
+@patch("sophonic.gitlab.httpx.post")
 def test_build_tools_http_error_returns_empty_dict(mock_post):
     import httpx
 
@@ -191,28 +191,16 @@ def test_build_tools_empty_token_returns_empty_dict():
     assert any("url" in str(w.message).lower() or "token" in str(w.message).lower() for w in caught)
 
 
-# ── build_registry integration ────────────────────────────────────────────────
+# ── build_tools naming ─────────────────────────────────────────────────────────
 
-@patch("sophonic.tools.gitlab.httpx.post")
-def test_build_registry_includes_gitlab_tools_when_enabled(mock_post, monkeypatch):
-    """build_registry() registers gitlab_* tools when features.gitlab = True."""
-    from sophonic.config import Config, FeaturesConfig, GitLabConfig, load_config
-    load_config.cache_clear()
+@patch("sophonic.gitlab.httpx.post")
+def test_build_tools_namespaces_discovered_tools(mock_post):
+    """Discovered tools are exposed as gitlab_<name> callables."""
+    from sophonic.config import GitLabConfig
+    from sophonic.gitlab import build_tools
 
     mock_post.return_value = _tools_list_response([
         {"name": "list_issues", "description": "List issues"},
     ])
-
-    gitlab_cfg = Config(
-        features=FeaturesConfig(gitlab=True, google=False, slack=False, zoom=False),
-        gitlab=GitLabConfig(url="https://gitlab.example.com", token="glpat-test"),
-    )
-
-    with patch("sophonic.tools.load_config", return_value=gitlab_cfg), \
-         patch("sophonic.skills.validate"):
-        from sophonic.tools import _REGISTRY, build_registry
-        _REGISTRY.clear()
-        registry = build_registry()
-
-    assert "gitlab_list_issues" in registry
-    load_config.cache_clear()
+    reg = build_tools(GitLabConfig(url="https://gitlab.example.com", token="glpat-test"))
+    assert "gitlab_list_issues" in reg

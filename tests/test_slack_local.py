@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from sophonic.tools import slack_local
+from sophonic import slack_local
 
 
 # ── cookie decryption ────────────────────────────────────────────────────────────
@@ -166,6 +166,82 @@ def test_unread_digest_needs_auth(monkeypatch):
     monkeypatch.setattr(slack_local, "_get_credentials", raise_auth)
     result = slack_local.unread_digest()
     assert result["needs_auth"] is True
+
+
+def test_followups_mentions_dms_and_saved(monkeypatch):
+    monkeypatch.setattr(slack_local, "_get_credentials", lambda: ("xoxc-t", "xoxd-c"))
+
+    def fake(method, params, token, d_cookie):
+        if method == "auth.test":
+            return {"ok": True, "user_id": "UME", "user": "me.handle"}
+        if method == "search.messages":
+            q = params["query"]
+            if q.startswith("to:@"):  # DMs to me
+                return {"ok": True, "messages": {"matches": [
+                    {"channel": {"id": "D1", "is_im": True, "user": "UDM", "name": "UDM"},
+                     "ts": "301", "user": "UDM", "username": "Dana",
+                     "text": "and one more thing", "permalink": "https://s/p301"},  # same DM, newer
+                    {"channel": {"id": "D1", "is_im": True, "user": "UDM", "name": "UDM"},
+                     "ts": "300", "user": "UDM", "username": "Dana",
+                     "text": "can you review?", "permalink": "https://s/p300"},
+                    {"channel": {"id": "D2", "is_im": True, "user": "UBOT", "name": "UBOT"},
+                     "ts": "310", "user": "UBOT", "bot_id": "B1", "username": "Google Calendar",
+                     "text": "event reminder", "permalink": "https://s/p310"},  # bot_id → excluded
+                    {"channel": {"id": "D3", "is_im": True, "user": "UAPP", "name": "UAPP"},
+                     "ts": "320", "user": "UAPP", "username": "Some App",
+                     "text": "notification", "permalink": "https://s/p320"},  # is_bot user → excluded
+                ]}}
+            return {"ok": True, "messages": {"matches": [  # channel mentions of me
+                {"channel": {"id": "C1", "name": "eng"}, "ts": "100", "user": "UOTH",
+                 "username": "Other", "text": "<@UME> please look", "permalink": "https://s/p100"},
+                {"channel": {"id": "C2", "name": "design"}, "ts": "200", "user": "UOTH2",
+                 "username": "Deb", "text": "<@UME> thoughts?",
+                 "permalink": "https://s/p200?thread_ts=200"},  # I replied → excluded
+            ]}}
+        if method == "conversations.replies":  # thread for C2 — I replied after
+            return {"ok": True, "messages": [
+                {"user": "UOTH2", "ts": "200"}, {"user": "UME", "ts": "250"},
+            ]}
+        if method == "conversations.history":
+            if "latest" in params:  # saved-item text lookup
+                return {"ok": True, "messages": [{"user": "UX", "ts": params["latest"], "text": "saved thing"}]}
+            return {"ok": True, "messages": [{"user": params["channel"], "ts": params["oldest"]}]}  # no UME → unanswered
+        if method == "saved.list":
+            return {"ok": True, "saved_items": [
+                {"item_type": "message", "item_id": "C3", "ts": "400", "state": "in_progress", "is_archived": False},
+                {"item_type": "message", "item_id": "C4", "ts": "500", "state": "completed"},  # excluded
+            ]}
+        if method == "chat.getPermalink":
+            return {"ok": True, "permalink": f"https://s/p{params['message_ts']}"}
+        if method == "conversations.info":
+            return {"ok": True, "channel": {"id": params["channel"], "name": "random", "user": "UDM"}}
+        if method == "users.info":
+            if params.get("user") == "UAPP":
+                return {"ok": True, "user": {"is_bot": True, "name": "someapp"}}
+            return {"ok": True, "user": {"real_name": "Dana"}}
+        return {"ok": False, "error": "unexpected"}
+
+    monkeypatch.setattr(slack_local, "_api", fake)
+
+    result = slack_local.followups(days=3)
+    kinds = [(i["kind"], i["channel"]) for i in result["items"]]
+    assert ("mention", "#eng") in kinds          # unanswered mention included
+    assert ("dm", "@Dana") in kinds              # unanswered DM included
+    assert ("later", "#random") in kinds         # uncompleted saved item included
+    assert all(c != "#design" for _, c in kinds)  # answered mention excluded
+    assert all(i["ts"] != "500" for i in result["items"])  # completed saved item excluded
+    assert all(i["ts"] != "310" for i in result["items"])  # bot_id DM (Google Calendar) excluded
+    assert all(i["ts"] != "320" for i in result["items"])  # is_bot app DM excluded
+    assert sum(1 for k, _ in kinds if k == "dm") == 1        # two DMs from Dana collapse to one
+    dm = next(i for i in result["items"] if i["kind"] == "dm")
+    assert dm["ts"] == "301"                                  # newest unanswered message wins
+
+
+def test_followups_needs_auth(monkeypatch):
+    def raise_auth():
+        raise slack_local.SlackAuthError("no cookie")
+    monkeypatch.setattr(slack_local, "_get_credentials", raise_auth)
+    assert slack_local.followups()["needs_auth"] is True
 
 
 def test_unread_needs_auth_when_no_session(monkeypatch):

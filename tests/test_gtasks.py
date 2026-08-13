@@ -31,7 +31,7 @@ class _FakeTasksApi:
 
 
 def test_list_open_tasks_parses_and_maps(monkeypatch):
-    from sophonic.tools import gtasks
+    from sophonic import gtasks
 
     fake = _FakeTasksApi(
         lists=[{"id": "L1", "title": "Work"}, {"id": "L2", "title": "Home"}],
@@ -54,7 +54,7 @@ def test_list_open_tasks_parses_and_maps(monkeypatch):
 
 
 def test_list_open_tasks_scope_error_returns_needs_auth(monkeypatch):
-    from sophonic.tools import gtasks
+    from sophonic import gtasks
     from googleapiclient.errors import HttpError
 
     resp = MagicMock()
@@ -70,7 +70,7 @@ def test_list_open_tasks_scope_error_returns_needs_auth(monkeypatch):
 
 
 def test_list_open_tasks_api_disabled_returns_enable_hint(monkeypatch):
-    from sophonic.tools import gtasks
+    from sophonic import gtasks
     from googleapiclient.errors import HttpError
 
     resp = MagicMock()
