@@ -31,35 +31,62 @@ sophonic/                    slim library the scripts import (auth + API code on
 
 ## Install
 
-1. Add the plugin to Claude Code (point it at this repo as a local plugin, or install
-   from your marketplace).
-2. Install [`uv`](https://docs.astral.sh/uv/) — the scripts run under it. The first
-   script call triggers `uv sync` automatically; you can also run it once up front:
-   ```
-   uv sync
-   ```
-3. For Zoom, install the Playwright browser once:
-   ```
-   uv run playwright install chromium
-   ```
+This repo is its own Claude Code plugin **marketplace** (`.claude-plugin/marketplace.json`),
+so installing is two commands inside Claude Code.
+
+**From GitHub:**
+```
+/plugin marketplace add <owner>/sophonic
+/plugin install sophonic@sophonic
+```
+
+**From a local clone (development):**
+```
+git clone <repo> ~/src/sophonic
+```
+then in Claude Code:
+```
+/plugin marketplace add ~/src/sophonic
+/plugin install sophonic@sophonic
+```
+(`/plugin` opens an interactive browser for the same thing. Non-interactively:
+`claude plugin install sophonic@sophonic --scope user`.) After changes to the plugin
+files, `/reload-plugins` picks them up. Enable/disable per session with
+`/plugin enable|disable sophonic@sophonic`; the enabled state is stored in
+`~/.claude/settings.json` (user scope) or `.claude/settings.json` (project scope).
+
+**Prerequisites:**
+1. Install [`uv`](https://docs.astral.sh/uv/) — the scripts run under it. The first
+   script call triggers `uv sync` automatically; you can also run it once up front from
+   the plugin directory: `uv sync`.
+2. For Zoom, install the Playwright browser once: `uv run playwright install chromium`.
 
 No `ANTHROPIC_API_KEY` / `SOPHONIC_LLM_API_KEY` is needed — Claude Code provides the model.
 
 ## Configure
 
-Run **`/sophonic:setup`** and Claude will probe what's configured (`scripts/doctor.py`),
-interview you for gaps, and apply them. Under the hood, configuration lives in
-`~/.sophonic/config.toml` (settings) and `~/.sophonic/.env` (secrets, `0600`). You can
-also drive it directly:
+Configuration lives in `~/.sophonic/config.toml` (settings) and `~/.sophonic/.env`
+(secrets, `0600`). Three ways to manage it:
 
+**1. Guided (inside Claude Code):** run **`/sophonic:setup`** — Claude probes what's
+configured, interviews you for gaps, and applies them.
+
+**2. Direct from inside Claude Code:** **`/sophonic:config`** — e.g.
+`/sophonic:config set vault.path /path/to/vault` or `/sophonic:config show`. Claude runs
+the change for you (it will hand secret entry back to your terminal).
+
+**3. Terminal CLI wrapper (optional):** the plugin ships thin console scripts for people
+who prefer the shell. After `uv sync` (or `uv tool install .` for a global command):
 ```bash
-uv run python scripts/config.py show                       # effective config (secrets redacted)
-uv run python scripts/config.py set vault.path /path/to/vault
-uv run python scripts/config.py set features.gitlab true
-uv run python scripts/config.py set-secret ZOOM_COOKIES --stdin   # paste, then Enter
+sophonic-config show                       # effective config (secrets redacted)
+sophonic-config set vault.path /path/to/vault
+sophonic-config set features.gitlab true
+sophonic-config set-secret ZOOM_COOKIES --stdin   # paste, then Enter
+sophonic-doctor                            # status of every integration
+sophonic-auth google | slack | zoom        # authenticate
 ```
-
-Set `SOPHONIC_VAULT` in your environment to override the vault path.
+The equivalent no-install form is `uv run python scripts/config.py …` (this is exactly
+what the skills call). Set `SOPHONIC_VAULT` in your environment to override the vault path.
 
 Config keys: `vault.{path,daily_dir,daily_prefix,meetings_dir}` ·
 `features.{obsidian,reminders,google,slack,zoom,gitlab}` ·
@@ -69,12 +96,14 @@ Config keys: `vault.{path,daily_dir,daily_prefix,meetings_dir}` ·
 
 ## Authenticate (run these in your own terminal)
 
-These open a browser or read a local session, so you run them — not Claude:
+These open a browser or read a local session, so you run them — not Claude (use the
+`sophonic-auth` wrapper after `uv sync`, or the `uv run …` form):
 
 ```bash
-uv run python scripts/auth.py google   # OAuth consent (needs a Desktop-app client JSON)
-uv run python scripts/auth.py slack    # reads the signed-in Slack desktop app (Keychain prompt)
-uv run python scripts/auth.py zoom     # prints how to paste your zoom.us cookies
+sophonic-auth google   # OAuth consent (needs a Desktop-app client JSON)
+sophonic-auth slack    # reads the signed-in Slack desktop app (Keychain prompt)
+sophonic-auth zoom     # prints how to paste your zoom.us cookies
+# no-install form: uv run python scripts/auth.py <service>
 ```
 
 - **Google** — download a **Desktop app** OAuth client JSON from Google Cloud and save it
@@ -97,6 +126,7 @@ activates. Or use the slash commands:
 - `/sophonic:today` — calendar + tasks due today + yesterday's unfinished (read-only).
 - `/sophonic:rollover` — carry unfinished tasks into today's note (idempotent).
 - `/sophonic:setup` — guided configuration.
+- `/sophonic:config` — view or change a config value directly (e.g. `set vault.path …`).
 
 ## Vault conventions
 

@@ -31,6 +31,14 @@ dev = [
     "freezegun>=1.4.0",
 ]
 
+# Thin, optional terminal wrappers for the run-in-terminal utilities. The plugin itself
+# needs none of these (skills call scripts/*.py over Bash); they exist only so terminal
+# users can type `sophonic-config …` instead of `uv run python scripts/config.py …`.
+[project.scripts]
+sophonic-config = "sophonic.configcli:main"
+sophonic-doctor = "sophonic.doctorcli:main"
+sophonic-auth = "sophonic.authcli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["sophonic"]
 

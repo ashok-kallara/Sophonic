@@ -59,5 +59,10 @@ the `ZOOM_COOKIES` secret. No LLM key is required — Claude Code is the model.
 
 - The vault work (daily notes, tasks, rollover) is pure skill — it only needs a valid
   `vault.path`. The scripts exist only for the auth-bound sources (Google/Slack/Zoom/GitLab).
+- Terminal users who ran `uv sync` can use the shorthand wrappers instead of the
+  `uv run python scripts/…` form: `sophonic-config …`, `sophonic-doctor`, `sophonic-auth …`.
+  `doctor`'s `fix` fields use those names. When *you* run a command via Bash, use the
+  `uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/…"` form,
+  which works whether or not the wrappers are installed.
 - `uv` must be installed; the first run of any script triggers `uv sync`. Zoom also needs
   Playwright's Chromium — install once with `uv run playwright install chromium`.
