@@ -1,0 +1,59 @@
+"""Authenticate the auth-bound integrations — shared by the `sophonic-auth` console
+script and the plugin's `scripts/auth.py` shim.
+
+Run in a terminal: these open a browser (Google) or read a local Keychain/session
+(Slack), which Claude Code cannot do. Prints human-readable status (not JSON).
+"""
+
+from __future__ import annotations
+
+import argparse
+import os
+
+
+def _google() -> int:
+    from sophonic.google_auth import get_credentials
+
+    get_credentials()  # runs the desktop OAuth flow if needed
+    print("✓ Google authentication successful.")
+    return 0
+
+
+def _slack() -> int:
+    from sophonic import slack_local
+
+    try:
+        token, d_cookie = slack_local._get_credentials()
+    except slack_local.SlackAuthError as exc:
+        print(f"✗ Slack auth failed: {exc}")
+        print("  Make sure the Slack desktop app is installed and signed in,")
+        print("  then approve the one-time Keychain prompt for 'Slack Safe Storage'.")
+        return 1
+    identity = slack_local._api("auth.test", {}, token, d_cookie)
+    print(f"✓ Slack OK — signed in as {identity.get('user', '?')} in {identity.get('team', '?')}.")
+    return 0
+
+
+def _zoom() -> int:
+    if os.environ.get("ZOOM_COOKIES"):
+        print("✓ Zoom cookies are set. Try: sophonic-config get, or the zoom skill.")
+        return 0
+    print(
+        "Zoom needs your web-session cookies (browser automation is blocked in managed browsers).\n"
+        "  1. Log in to https://zoom.us, open DevTools → Network.\n"
+        "  2. Click any request to zoom.us → Request Headers → copy the whole 'Cookie:' value.\n"
+        "  3. Run:  sophonic-config set-secret ZOOM_COOKIES --stdin\n"
+        "     then paste on one line and press Return.  (Tip: pbpaste | ... --stdin)"
+    )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = argparse.ArgumentParser(prog="sophonic-auth", description="Authenticate Sophonic integrations.")
+    p.add_argument("service", choices=["google", "slack", "zoom"])
+    args = p.parse_args(argv)
+    return {"google": _google, "slack": _slack, "zoom": _zoom}[args.service]()
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,8 +1,0 @@
-{
-  "name": "sophonic",
-  "description": "Obsidian-native assistant — daily notes, tasks, Google Calendar, Gmail, Slack, Zoom, and GitLab — driven through the `sophonic` CLI. No MCP server required.",
-  "version": "0.1.0",
-  "author": {
-    "name": "Sophonic"
-  }
-}
