@@ -39,8 +39,9 @@ surface that source's status (and the `run` command for the user's terminal) and
    Skip any item whose text is already present anywhere in the note.
 
 4. **Google Tasks.** `gtasks.py list`. For each task add
-   `- [ ] <title> (Google Tasks: <list>) 📅 <due> #gtask` under `## Tasks` (omit `📅 …`
-   when there's no due). Dedupe on the title.
+   `- [ ] [<title>](<link>) (Google Tasks: <list>) 📅 <due> #gtask` under `## Tasks`
+   (omit the `[…](…)` link wrapper when `link` is null; omit `📅 …` when there's no
+   due). Dedupe on the title.
 
 5. **Slack.** `slack.py followups` → for each item add a reply task under `## Tasks`
    tagged `#slack`, phrased by kind, with the permalink appended:

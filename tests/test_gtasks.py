@@ -37,7 +37,14 @@ def test_list_open_tasks_parses_and_maps(monkeypatch):
         lists=[{"id": "L1", "title": "Work"}, {"id": "L2", "title": "Home"}],
         tasks_by_list={
             "L1": [
-                {"id": "t1", "title": "Ship it", "due": "2026-08-05T00:00:00.000Z", "notes": "n"},
+                {
+                    "id": "t1",
+                    "title": "Ship it",
+                    "due": "2026-08-05T00:00:00.000Z",
+                    "notes": "n",
+                    "webViewLink": "https://tasks.google.com/task/t1",
+                    "links": [{"type": "email", "description": "Re: ship", "link": "https://mail.google.com/..."}],
+                },
                 {"id": "blank", "title": "  "},  # structural empty row — skipped
             ],
             "L2": [{"id": "t2", "title": "Buy milk"}],
@@ -50,7 +57,11 @@ def test_list_open_tasks_parses_and_maps(monkeypatch):
     ship = result[0]
     assert ship["due"] == date(2026, 8, 5)
     assert ship["list"] == "Work"
+    assert ship["link"] == "https://tasks.google.com/task/t1"
+    assert ship["links"][0]["type"] == "email"
     assert result[1]["due"] is None
+    assert result[1]["link"] is None
+    assert result[1]["links"] == []
 
 
 def test_list_open_tasks_scope_error_returns_needs_auth(monkeypatch):

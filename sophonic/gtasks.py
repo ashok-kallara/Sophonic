@@ -65,6 +65,8 @@ def list_open_tasks(max_lists: int = 20, max_tasks: int = 100) -> Any:
                     "due": _parse_due(t.get("due")),
                     "list": tl.get("title", ""),
                     "list_id": tl["id"],
+                    "link": t.get("webViewLink"),
+                    "links": t.get("links", []),
                 })
         return out
     except Exception as exc:  # noqa: BLE001 — normalize into a caller-friendly dict

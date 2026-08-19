@@ -13,8 +13,14 @@ Read-only list of open (incomplete) Google Tasks via a thin fetch-script.
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gtasks.py" list
 ```
 
-Returns `[{id, title, notes, due, list, list_id}]`. To land these in the daily note,
-follow [[obsidian]] — e.g. `- [ ] <title> (Google Tasks: <list>) 📅 <due> #gtask`.
+Returns `[{id, title, notes, due, list, list_id, link, links}]`. `link` is the
+`webViewLink` for opening the task in the Google Tasks web UI (may be `null`).
+`links` is an array of `{type, description, link}` associated items (e.g. originating
+emails).
+
+To land these in the daily note, follow [[obsidian]] — e.g.:
+`- [ ] [<title>](<link>) (Google Tasks: <list>) 📅 <due> #gtask`
+(omit the `[…](…)` wrapper when `link` is null; omit `📅 …` when there's no due).
 The [[daybrief]] skill already merges these when you "start my day".
 
 ## Auth
