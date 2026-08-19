@@ -1,5 +1,5 @@
 ---
-description: Build today's daily note and merge in Zoom action items, Google Tasks, and Slack follow-ups.
+description: Build today's daily note and merge in Zoom action items, Google Tasks, Google Drive open comments, and Slack follow-ups.
 ---
 
 Start my day: use the `daybrief` skill to build today's daily note (with rollover) and

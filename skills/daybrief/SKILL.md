@@ -1,6 +1,6 @@
 ---
 name: daybrief
-description: "Start my day" — build today's daily note and merge in Zoom meeting action items, open Google Tasks, and Slack follow-ups, plus a summary of informational Slack channels. Use when the user says "start my day", "morning brief", "what's on today", or asks to pull everything into today's note.
+description: "Start my day" — build today's daily note and merge in Zoom meeting action items, open Google Tasks, Google Drive open comments, and Slack follow-ups, plus a summary of informational Slack channels. Use when the user says "start my day", "morning brief", "what's on today", or asks to pull everything into today's note.
 ---
 
 # Start my day
@@ -43,7 +43,14 @@ surface that source's status (and the `run` command for the user's terminal) and
    (omit the `[…](…)` link wrapper when `link` is null; omit `📅 …` when there's no
    due). Dedupe on the title.
 
-5. **Slack.** `slack.py followups` → for each item add a reply task under `## Tasks`
+5. **Google Drive comments (if Google is on).** `gdrive.py mentioned-comments --days 7`.
+   For each result add a task under `## Tasks` tagged `#gdrive`:
+   - mention: `- [ ] Reply to comment in [<file_name>](<file_link>) by <author>: "<excerpt>" #gdrive`
+   - assigned: `- [ ] [<file_name>](<file_link>) — assigned comment by <author>: "<excerpt>" #gdrive`
+   Truncate `content` to ~60 chars for the excerpt. Skip items where the `file_link`
+   and the first 40 chars of `content` already appear together in the note.
+
+6. **Slack.** `slack.py followups` → for each item add a reply task under `## Tasks`
    tagged `#slack`, phrased by kind, with the permalink appended:
    - `mention`: `Reply in <channel> to <from>: <text> <permalink>`
    - `dm`: `Reply to <channel>: <text> <permalink>`
@@ -55,9 +62,9 @@ surface that source's status (and the `run` command for the user's terminal) and
    you **replace** in place each run. Do not shell out to any LLM for this — that's your
    job now.
 
-6. **Report.** Summarize what changed: counts added per source (Zoom / Google Tasks /
-   Slack), how many tasks rolled over, and any sources that need auth or errored (with
-   the fix command).
+7. **Report.** Summarize what changed: counts added per source (Zoom / Google Tasks /
+   Drive / Slack), how many tasks rolled over, and any sources that need auth or errored
+   (with the fix command).
 
 ## Scope flags
 
