@@ -16,6 +16,11 @@ from typing import Any, Callable
 # Make the `sophonic` package importable whether or not the project is installed.
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
+# Load ~/.sophonic/.env into os.environ so secrets (ZOOM_COOKIES, GITLAB_TOKEN, …)
+# are available to every script without the caller needing to source a dotenv file.
+from sophonic.config import load_config  # noqa: E402
+load_config()
+
 
 def emit(obj: Any) -> None:
     """Print a single JSON object to stdout (the script's entire contract)."""
