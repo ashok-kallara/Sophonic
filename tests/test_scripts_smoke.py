@@ -32,6 +32,7 @@ def _run(*argv: str) -> str:
     ("doctor.py",),
     ("zoom.py", "check-auth"),
     ("gtasks.py", "list"),
+    ("gdrive.py", "mentioned-comments"),
     ("config.py", "show"),
     ("config.py", "get", "vault.path"),
 ])
