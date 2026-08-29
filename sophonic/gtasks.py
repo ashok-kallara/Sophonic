@@ -17,7 +17,9 @@ _SCOPE_FIX = (
     'uv run python scripts/config.py set google.scopes '
     '"https://www.googleapis.com/auth/calendar.readonly,'
     'https://www.googleapis.com/auth/gmail.readonly,'
-    'https://www.googleapis.com/auth/tasks.readonly" '
+    'https://www.googleapis.com/auth/tasks.readonly,'
+    'https://www.googleapis.com/auth/drive.readonly,'
+    'https://www.googleapis.com/auth/spreadsheets.readonly" '
     "&& uv run python scripts/auth.py google"
 )
 

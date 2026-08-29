@@ -2,10 +2,10 @@
 name: ask
 description: >
   Answer an ad-hoc question by searching across all configured Sophonic sources —
-  Obsidian vault, Google Tasks, Google Drive comments, Slack, Gmail, Google Calendar,
-  Zoom notes, GitLab. Use when the user asks "find", "search", "where is", "do I have
-  any", "what do I know about", "show me anything about", or any open-ended question
-  that might span multiple tools.
+  Obsidian vault, Google Tasks, Google Drive (comments and document/spreadsheet
+  content), Slack, Gmail, Google Calendar, Zoom notes, GitLab. Use when the user asks
+  "find", "search", "where is", "do I have any", "what do I know about", "show me
+  anything about", or any open-ended question that might span multiple tools.
 ---
 
 # Ask
@@ -75,9 +75,12 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/s
 Returns `[{text, channel, user, ts, permalink}]`. Report matching messages with
 channel, user, and the permalink.
 
-### 6. Google Drive comments
+### 6. Google Drive
 
-If the question is about comments, mentions, or docs/sheets needing a reply:
+Two different [[gdrive]] calls depending on what the question is actually about — use
+either or both:
+
+**Comments** — if the question is about comments, mentions, or docs/sheets needing a reply:
 
 ```
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" mentioned-comments --days 30
@@ -90,6 +93,18 @@ back empty and Drive seems like a likely place for the answer, mention that a fu
 
 Returns unresolved comments where the user is @mentioned or assigned. Filter in-model
 to the topic and report the file name, author, excerpt, and `file_link`.
+
+**Content search** — if the question is about what's written *inside* a doc/sheet
+(e.g. "where did I write about X", "which doc covers Y"):
+
+```
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" search-content --query "<topic>"
+```
+
+Already searches everything the user can see (no recency limit, no ask-first gate).
+Returns an excerpt per matching file; report the file name, excerpt, and `file_link`. An
+entry with `needs_auth` means only one of the two Drive scopes has been granted so far —
+mention it but still report the entries that did come back.
 
 ### 7. Google Calendar
 

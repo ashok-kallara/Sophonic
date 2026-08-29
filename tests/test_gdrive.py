@@ -16,12 +16,20 @@ class _FakeDriveApi:
     actually sent.
     """
 
-    def __init__(self, user_email: str, files: list, comments_by_file: dict):
+    def __init__(
+        self,
+        user_email: str,
+        files: list,
+        comments_by_file: dict,
+        doc_text_by_file: dict | None = None,
+    ):
         self._user_email = user_email
         self._pages = files if files and isinstance(files[0], list) else [files]
         self._comments_by_file = comments_by_file
+        self._doc_text_by_file = doc_text_by_file or {}
         self.file_list_calls: list[dict] = []
         self.comments_list_calls: list[dict] = []
+        self.export_calls: list[dict] = []
 
     def about(self):
         api = MagicMock()
@@ -43,6 +51,12 @@ class _FakeDriveApi:
                 m.execute.return_value = resp
                 return m
 
+            def export(self, fileId, mimeType):
+                outer.export_calls.append({"fileId": fileId, "mimeType": mimeType})
+                m = MagicMock()
+                m.execute.return_value = outer._doc_text_by_file.get(fileId, "").encode("utf-8")
+                return m
+
         return _Files()
 
     def comments(self):
@@ -56,6 +70,47 @@ class _FakeDriveApi:
                 return m
 
         return _Comments()
+
+
+class _FakeSheetsApi:
+    """Minimal stand-in for the googleapiclient Sheets v4 service.
+
+    `tabs_by_file` maps file_id -> {tab_title: [[row values], ...]}, so a test can give
+    a spreadsheet more than one tab and assert every tab got read. `raise_on_get` lets a
+    test simulate the Sheets API being unavailable (e.g. not yet consented/enabled).
+    """
+
+    def __init__(self, tabs_by_file: dict, raise_on_get: Exception | None = None):
+        self._tabs_by_file = tabs_by_file
+        self._raise_on_get = raise_on_get
+        self.values_get_calls: list[dict] = []
+
+    def spreadsheets(self):
+        outer = self
+
+        class _Values:
+            def get(self, spreadsheetId, range):
+                outer.values_get_calls.append({"spreadsheetId": spreadsheetId, "range": range})
+                m = MagicMock()
+                rows = outer._tabs_by_file.get(spreadsheetId, {}).get(range, [])
+                m.execute.return_value = {"values": rows}
+                return m
+
+        class _Spreadsheets:
+            def get(self, spreadsheetId, fields):
+                if outer._raise_on_get:
+                    raise outer._raise_on_get
+                m = MagicMock()
+                titles = list(outer._tabs_by_file.get(spreadsheetId, {}).keys())
+                m.execute.return_value = {
+                    "sheets": [{"properties": {"title": t}} for t in titles]
+                }
+                return m
+
+            def values(self):
+                return _Values()
+
+        return _Spreadsheets()
 
 
 _ME = "me@example.com"
@@ -246,6 +301,131 @@ def test_max_files_caps_total_across_pages(monkeypatch):
     # only the first page was needed to satisfy max_files=3
     assert len(fake.file_list_calls) == 1
     assert len(fake.comments_list_calls) == 3
+
+
+def test_search_content_builds_fulltext_query_and_returns_excerpt(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        files=[_FAKE_DOC],
+        comments_by_file={},
+        doc_text_by_file={"doc1": "Intro. " + ("padding " * 50) + "the Q3 budget is tight this year." + (" more" * 50)},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.search_content("Q3 budget", max_files=10, context_chars=20)
+
+    assert "fullText contains 'Q3 budget'" in fake.file_list_calls[0]["q"]
+    assert fake.export_calls == [{"fileId": "doc1", "mimeType": "text/plain"}]
+    assert len(result) == 1
+    assert result[0]["file_type"] == "document"
+    assert result[0]["file_name"] == "Q3 Budget"
+    assert "Q3 budget is tight" in result[0]["excerpt"]
+    assert result[0]["excerpt"].startswith("…")  # truncated before the match
+
+
+def test_search_content_escapes_single_quotes_in_query(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(user_email=_ME, files=[_FAKE_DOC], comments_by_file={}, doc_text_by_file={"doc1": "x"})
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    gdrive.search_content("bob's plan")
+
+    assert "bob\\'s plan" in fake.file_list_calls[0]["q"]
+
+
+def test_search_content_falls_back_to_preview_when_no_literal_match(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        files=[_FAKE_DOC],
+        comments_by_file={},
+        doc_text_by_file={"doc1": "Some unrelated-looking text that Drive's fuzzy match found relevant."},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.search_content("totally different phrase", context_chars=10)
+
+    assert result[0]["excerpt"].startswith("Some unrelated")
+
+
+def test_search_content_reads_every_sheet_tab_not_just_the_first(monkeypatch):
+    from sophonic import gdrive
+
+    fake_drive = _FakeDriveApi(user_email=_ME, files=[_FAKE_SHEET], comments_by_file={})
+    fake_sheets = _FakeSheetsApi(
+        tabs_by_file={
+            "sheet1": {
+                "Sheet1": [["header"], ["irrelevant row"]],
+                "Q3 Tab": [["budget"], ["the target number is 42000"]],
+            }
+        }
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake_drive)
+    monkeypatch.setattr(gdrive, "_sheets_service", lambda: fake_sheets)
+
+    result = gdrive.search_content("42000", context_chars=20)
+
+    tabs_read = {c["range"] for c in fake_sheets.values_get_calls}
+    assert tabs_read == {"Sheet1", "Q3 Tab"}  # not just the first tab
+    assert result[0]["file_type"] == "spreadsheet"
+    assert "42000" in result[0]["excerpt"]
+
+
+def test_search_content_partial_failure_keeps_successful_entries(monkeypatch):
+    """A common transitional state: drive.readonly granted, spreadsheets.readonly not
+    yet consented. The Doc match must still come back with its excerpt; only the Sheet
+    entry should degrade — the whole call must not fail just because one file did."""
+    from sophonic import gdrive
+    from googleapiclient.errors import HttpError
+
+    doc = {**_FAKE_DOC, "id": "doc1"}
+    sheet = {**_FAKE_SHEET, "id": "sheet1"}
+    fake_drive = _FakeDriveApi(
+        user_email=_ME,
+        files=[doc, sheet],
+        comments_by_file={},
+        doc_text_by_file={"doc1": "the Q3 budget details are here"},
+    )
+    resp = MagicMock()
+    resp.status = 403
+    sheets_error = HttpError(
+        resp=resp,
+        content=b'{"error":{"status":"PERMISSION_DENIED","message":"Google Sheets API has not been used in project 123. SERVICE_DISABLED"}}',
+    )
+    fake_sheets = _FakeSheetsApi(tabs_by_file={}, raise_on_get=sheets_error)
+    monkeypatch.setattr(gdrive, "_service", lambda: fake_drive)
+    monkeypatch.setattr(gdrive, "_sheets_service", lambda: fake_sheets)
+
+    result = gdrive.search_content("Q3 budget")
+
+    assert len(result) == 2
+    doc_entry = next(r for r in result if r["file_type"] == "document")
+    sheet_entry = next(r for r in result if r["file_type"] == "spreadsheet")
+    assert "Q3 budget" in doc_entry["excerpt"]
+    assert "error" not in doc_entry
+    assert sheet_entry["excerpt"] is None
+    assert "not enabled" in sheet_entry["error"]
+
+
+def test_search_content_scope_error_returns_needs_auth(monkeypatch):
+    from sophonic import gdrive
+    from googleapiclient.errors import HttpError
+
+    resp = MagicMock()
+    resp.status = 403
+
+    def boom():
+        raise HttpError(resp=resp, content=b"insufficient scope for spreadsheets")
+
+    monkeypatch.setattr(gdrive, "_service", boom)
+    result = gdrive.search_content("anything")
+    assert result["needs_auth"] is True
+    assert "spreadsheets.readonly" in result["detail"]
+    assert "spreadsheets.readonly" in result["run"]
 
 
 def test_scope_error_returns_needs_auth(monkeypatch):
