@@ -1,10 +1,17 @@
 """Google Drive integration — open comments mentioning the authenticated user (read-only).
 
 Requires the drive.readonly OAuth scope. Two-step approach:
-  1. drive.files.list — recent Docs and Sheets modified in the last N days.
+  1. drive.files.list — recent Docs and Sheets modified in the last N days (or every
+     Doc/Sheet the caller can see, paginated, when days=None — the Drive API has no
+     single call that searches comments across a whole Drive, so a full scan means one
+     comments.list call per file).
   2. drive.comments.list — unresolved comments per file.
 Filter in-step-2 for comments where the user's email is in mentionedEmailAddresses
 or equals assigneeEmailAddress.
+
+Note: adding a comment does not bump a file's modifiedTime (that field tracks content
+edits only), so a day-bounded scan can miss a fresh mention on an old, otherwise-untouched
+file — this is why callers may want the days=None full-scan escape hatch.
 """
 
 from __future__ import annotations
@@ -46,8 +53,13 @@ def _user_email(svc: Any) -> str:
     return about["user"]["emailAddress"]
 
 
-def list_mentioned_comments(days: int = 30, max_files: int = 50) -> Any:
+def list_mentioned_comments(days: int | None = 30, max_files: int = 50) -> Any:
     """Return open (unresolved) comments in Docs/Sheets where the user is @mentioned or assigned.
+
+    `days=None` drops the modifiedTime filter entirely and paginates through every
+    Doc/Sheet the caller can see (up to `max_files`) — a full-Drive scan, for use when a
+    day-bounded pass finds nothing. Otherwise behaves as before: the `max_files` most
+    recently modified matching files, and comments modified within `days`.
 
     Returns a list of {file_id, file_name, file_type, file_link, comment_id, author,
     author_email, content, created, modified, is_assigned, mentions, reply_count}.
@@ -57,30 +69,45 @@ def list_mentioned_comments(days: int = 30, max_files: int = 50) -> Any:
         svc = _service()
         me = _user_email(svc)
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cutoff = None
+        if days is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
 
         mime_filter = f"(mimeType='{_MIME_DOCUMENT}' or mimeType='{_MIME_SPREADSHEET}')"
-        q = f"{mime_filter} and modifiedTime > '{cutoff}' and trashed=false"
+        q = f"{mime_filter} and trashed=false"
+        if cutoff:
+            q += f" and modifiedTime > '{cutoff}'"
 
-        files_resp = svc.files().list(
-            q=q,
-            fields=_FILE_FIELDS,
-            orderBy="modifiedTime desc",
-            pageSize=max_files,
-        ).execute()
+        files: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while len(files) < max_files:
+            resp = svc.files().list(
+                q=q,
+                fields=f"nextPageToken,{_FILE_FIELDS}",
+                orderBy="modifiedTime desc",
+                pageSize=min(1000, max_files - len(files)),
+                pageToken=page_token,
+            ).execute()
+            files.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+        files = files[:max_files]
 
         out: list[dict[str, Any]] = []
-        for f in files_resp.get("files", []):
+        for f in files:
             file_id = f["id"]
             file_type = "document" if f["mimeType"] == _MIME_DOCUMENT else "spreadsheet"
 
-            comments_resp = svc.comments().list(
-                fileId=file_id,
-                includeDeleted=False,
-                fields=_COMMENT_FIELDS,
-                startModifiedTime=cutoff,
-                pageSize=100,
-            ).execute()
+            comments_kwargs: dict[str, Any] = {
+                "fileId": file_id,
+                "includeDeleted": False,
+                "fields": _COMMENT_FIELDS,
+                "pageSize": 100,
+            }
+            if cutoff:
+                comments_kwargs["startModifiedTime"] = cutoff
+            comments_resp = svc.comments().list(**comments_kwargs).execute()
 
             for c in comments_resp.get("comments", []):
                 if c.get("resolved"):

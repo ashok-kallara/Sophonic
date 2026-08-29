@@ -83,6 +83,11 @@ If the question is about comments, mentions, or docs/sheets needing a reply:
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" mentioned-comments --days 30
 ```
 
+This only looks at recently-modified files — commenting doesn't bump a file's
+modifiedTime, so a mention on an old, untouched doc won't show up here. If this comes
+back empty and Drive seems like a likely place for the answer, mention that a full scan
+(`--all`, see [[gdrive]]) exists and ask before running it — it's much slower.
+
 Returns unresolved comments where the user is @mentioned or assigned. Filter in-model
 to the topic and report the file name, author, excerpt, and `file_link`.
 

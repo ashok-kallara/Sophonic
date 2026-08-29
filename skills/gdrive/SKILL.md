@@ -17,10 +17,30 @@ or assigned, via a thin fetch-script.
 ```
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" mentioned-comments
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" mentioned-comments --days 7 --max-files 20
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" mentioned-comments --all
 ```
 
 - `--days` — look back this many days for recently-modified files (default 30).
-- `--max-files` — max number of Docs/Sheets to inspect (default 50, most-recently-modified first).
+- `--max-files` — max number of Docs/Sheets to inspect (default 50, most-recently-modified
+  first; default 2000 when `--all` is set).
+- `--all` — **full scan.** Drops the day filter and paginates through every Doc/Sheet you
+  can access, up to `--max-files`. Costs one extra API call per file (the Drive Comments
+  API has no way to search across a whole Drive in one call), so it's meaningfully
+  slower than the default pass. See "Recent first, full scan on request" below —
+  **never run this without asking first.**
+
+## Recent first, full scan on request
+
+Default to the plain `mentioned-comments` call (recent files only). Two things worth
+knowing before you report "nothing found":
+
+- Adding a comment does **not** update a file's `modifiedTime` — that field only tracks
+  content edits. A brand-new mention on an old, otherwise-untouched doc is invisible to
+  the day-bounded pass no matter how large `--days` is.
+- If the recent pass returns an empty list (or a `{"message": ...}` no-results stub),
+  say so plainly and then **ask** whether to run a full scan (`--all`) — don't run it
+  automatically. It's slower and burns far more of the user's API quota, so the user
+  should decide whether that trade-off is worth it for this particular question.
 
 ## Return shape
 

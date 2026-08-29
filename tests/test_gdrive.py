@@ -8,12 +8,20 @@ import pytest
 
 
 class _FakeDriveApi:
-    """Minimal stand-in for the googleapiclient Drive v3 service."""
+    """Minimal stand-in for the googleapiclient Drive v3 service.
+
+    `files` may be a flat list (returned in one page) or a list of pages (each a list
+    of file dicts) to exercise pagination; `file_list_calls` records every
+    `files().list()` kwargs call so tests can assert on the query/pageSize/pageToken
+    actually sent.
+    """
 
     def __init__(self, user_email: str, files: list, comments_by_file: dict):
         self._user_email = user_email
-        self._files = files
+        self._pages = files if files and isinstance(files[0], list) else [files]
         self._comments_by_file = comments_by_file
+        self.file_list_calls: list[dict] = []
+        self.comments_list_calls: list[dict] = []
 
     def about(self):
         api = MagicMock()
@@ -21,15 +29,28 @@ class _FakeDriveApi:
         return api
 
     def files(self):
-        api = MagicMock()
-        api.list.return_value.execute.return_value = {"files": self._files}
-        return api
+        outer = self
+
+        class _Files:
+            def list(self, **kwargs):
+                outer.file_list_calls.append(kwargs)
+                page_index = len(outer.file_list_calls) - 1
+                m = MagicMock()
+                page = outer._pages[page_index] if page_index < len(outer._pages) else []
+                resp = {"files": page}
+                if page_index + 1 < len(outer._pages):
+                    resp["nextPageToken"] = f"page-{page_index + 1}"
+                m.execute.return_value = resp
+                return m
+
+        return _Files()
 
     def comments(self):
         outer = self
 
         class _Comments:
             def list(self, fileId, **kwargs):
+                outer.comments_list_calls.append({"fileId": fileId, **kwargs})
                 m = MagicMock()
                 m.execute.return_value = {"comments": outer._comments_by_file.get(fileId, [])}
                 return m
@@ -161,6 +182,70 @@ def test_reply_count_is_captured(monkeypatch):
 
     result = gdrive.list_mentioned_comments()
     assert result[0]["reply_count"] == 3
+
+
+def test_default_days_filters_query_and_comments_by_time(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(user_email=_ME, files=[_FAKE_DOC], comments_by_file={})
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    gdrive.list_mentioned_comments(days=30)
+
+    assert "modifiedTime >" in fake.file_list_calls[0]["q"]
+    assert "startModifiedTime" in fake.comments_list_calls[0]
+
+
+def test_days_none_is_a_full_scan_with_no_time_filter(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(user_email=_ME, files=[_FAKE_DOC], comments_by_file={})
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    gdrive.list_mentioned_comments(days=None, max_files=50)
+
+    assert "modifiedTime >" not in fake.file_list_calls[0]["q"]
+    assert "startModifiedTime" not in fake.comments_list_calls[0]
+
+
+def test_full_scan_paginates_across_multiple_pages(monkeypatch):
+    from sophonic import gdrive
+
+    doc_a = {**_FAKE_DOC, "id": "docA"}
+    doc_b = {**_FAKE_DOC, "id": "docB"}
+    doc_c = {**_FAKE_DOC, "id": "docC"}
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        files=[[doc_a, doc_b], [doc_c]],  # two pages
+        comments_by_file={
+            "docA": [_make_comment("c1", "hi @me", mentions=[_ME])],
+            "docC": [_make_comment("c2", "hi @me too", mentions=[_ME])],
+        },
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_mentioned_comments(days=None, max_files=10)
+
+    assert len(fake.file_list_calls) == 2  # followed nextPageToken once
+    assert {c["comment_id"] for c in result} == {"c1", "c2"}
+
+
+def test_max_files_caps_total_across_pages(monkeypatch):
+    from sophonic import gdrive
+
+    docs = [{**_FAKE_DOC, "id": f"doc{i}"} for i in range(5)]
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        files=[docs[:3], docs[3:]],  # two pages, 3 + 2 files
+        comments_by_file={},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    gdrive.list_mentioned_comments(days=None, max_files=3)
+
+    # only the first page was needed to satisfy max_files=3
+    assert len(fake.file_list_calls) == 1
+    assert len(fake.comments_list_calls) == 3
 
 
 def test_scope_error_returns_needs_auth(monkeypatch):
