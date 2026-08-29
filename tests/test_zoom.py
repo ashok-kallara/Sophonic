@@ -1,7 +1,7 @@
 """Tests for the Zoom AI-notes fetcher (cookie parsing, title split, extraction).
 
 Zoom is now a read-only fetcher: `action_items` returns items grouped by meeting and
-never touches the vault (the daybrief/zoom skill writes them).
+never touches the vault (the start-my-day/zoom skill writes them).
 """
 
 from freezegun import freeze_time

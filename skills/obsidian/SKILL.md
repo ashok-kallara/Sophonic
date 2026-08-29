@@ -60,7 +60,7 @@ Example: `- [ ] Email Dana the deck ⏫ 📅 2026-08-14 #followup`
 - **Notes / backlinks** → under `## Notes`.
 - **Grouped tasks** (e.g. meeting action items) → a `## Meeting Action Items` section,
   placed *before* `## Notes`, with a `### ` subheading per group and checkbox items
-  beneath it (see the daybrief skill).
+  beneath it (see the start-my-day skill).
 - **Refreshable snapshots** (e.g. a Slack summary) → a `## <Name>` section you *replace*
   in place on each run rather than append to.
 
@@ -109,4 +109,4 @@ tags: [sophonic]
 - Read before write; never clobber content you didn't mean to change.
 - Keep task formatting byte-exact (the emoji format above) — the Tasks plugin depends on it.
 - Dedupe every append against what's already in the note so re-runs are safe.
-- Related: [[reminders]], [[daybrief]].
+- Related: [[reminders]], [[start-my-day]].

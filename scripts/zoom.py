@@ -7,7 +7,7 @@
     uv run python scripts/zoom.py action-items --days 1 --owner "Jane"
 
 `action-items` returns extracted items grouped by meeting; it does NOT write the vault
-— the daybrief/zoom skill dedupes against today's note and writes the tasks itself.
+— the start-my-day/zoom skill dedupes against today's note and writes the tasks itself.
 On missing/expired cookies the result carries {"needs_auth": true, "run": "..."}.
 """
 

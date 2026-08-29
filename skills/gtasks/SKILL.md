@@ -21,7 +21,7 @@ emails).
 To land these in the daily note, follow [[obsidian]] — e.g.:
 `- [ ] [<title>](<link>) (Google Tasks: <list>) 📅 <due> #gtask`
 (omit the `[…](…)` wrapper when `link` is null; omit `📅 …` when there's no due).
-The [[daybrief]] skill already merges these when you "start my day".
+The [[start-my-day]] skill already merges these when you "start my day".
 
 ## Auth
 

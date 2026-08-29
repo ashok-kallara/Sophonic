@@ -1,5 +1,5 @@
 ---
-name: daybrief
+name: start-my-day
 description: "Start my day" — build today's daily note and merge in Zoom meeting action items, open Google Tasks, Google Drive open comments, and Slack follow-ups, plus a summary of informational Slack channels. Use when the user says "start my day", "morning brief", "what's on today", or asks to pull everything into today's note.
 ---
 

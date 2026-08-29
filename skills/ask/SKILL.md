@@ -2,10 +2,10 @@
 name: ask
 description: >
   Answer an ad-hoc question by searching across all configured Sophonic sources —
-  Obsidian vault, Google Tasks, Slack, Gmail, Google Calendar, Zoom notes, GitLab.
-  Use when the user asks "find", "search", "where is", "do I have any", "what do I
-  know about", "show me anything about", or any open-ended question that might span
-  multiple tools.
+  Obsidian vault, Google Tasks, Google Drive comments, Slack, Gmail, Google Calendar,
+  Zoom notes, GitLab. Use when the user asks "find", "search", "where is", "do I have
+  any", "what do I know about", "show me anything about", or any open-ended question
+  that might span multiple tools.
 ---
 
 # Ask
@@ -75,7 +75,18 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/s
 Returns `[{text, channel, user, ts, permalink}]`. Report matching messages with
 channel, user, and the permalink.
 
-### 6. Google Calendar
+### 6. Google Drive comments
+
+If the question is about comments, mentions, or docs/sheets needing a reply:
+
+```
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" mentioned-comments --days 30
+```
+
+Returns unresolved comments where the user is @mentioned or assigned. Filter in-model
+to the topic and report the file name, author, excerpt, and `file_link`.
+
+### 7. Google Calendar
 
 If the question has a time scope (e.g. "meetings this week", "what's on Thursday"):
 
@@ -85,7 +96,7 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/g
 
 Otherwise use `events-today`. Report matching events with start time and link.
 
-### 7. Zoom notes
+### 8. Zoom notes
 
 ```
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" notes
@@ -99,13 +110,13 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/z
 
 Report relevant meetings, key discussion points, and action items.
 
-### 8. GitLab
+### 9. GitLab
 
 Use the `gitlab` skill to search issues, merge requests, and wiki pages for the topic.
 Skip this step if GitLab is not configured (`features.gitlab = false` or no
 `GITLAB_TOKEN`).
 
-### 9. Synthesize
+### 10. Synthesize
 
 Write a concise answer grouped by source:
 

@@ -321,7 +321,7 @@ def action_items(
     whose text contains that substring (e.g. your name).
 
     Returns every extracted item grouped by meeting; it does NOT touch the vault.
-    The caller (the daybrief/zoom skill) dedupes against today's note and writes the
+    The caller (the start-my-day/zoom skill) dedupes against today's note and writes the
     tasks, so this stays a pure fetcher.
     """
     cookies = _zoom_cookies()

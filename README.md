@@ -12,7 +12,7 @@ Sophonic splits cleanly along what a Claude subagent can and cannot do natively:
 - **Vault work is pure skills.** Daily notes, tasks, idempotent rollover, meeting notes,
   and the "start my day" brief are just markdown edits, so Claude does them directly with
   its Read/Write/Edit/Glob/Grep tools. There is no code and no API for these — see
-  `skills/obsidian`, `skills/reminders`, `skills/daybrief`.
+  `skills/obsidian`, `skills/reminders`, `skills/start-my-day`.
 - **Auth-bound sources are thin scripts.** Google, Slack, Zoom, and GitLab need OAuth,
   Keychain decryption, or cookie sessions — things a model can't perform. Each is a small
   `scripts/<name>.py` that fetches data and prints **one JSON object**; the matching skill
@@ -21,9 +21,11 @@ Sophonic splits cleanly along what a Claude subagent can and cannot do natively:
 
 ```
 .claude-plugin/plugin.json   the plugin manifest
-commands/                    slash commands: /sophonic:{today,rollover,start-my-day,setup}
-skills/                      obsidian, reminders, daybrief (pure) + gcal, gmail, gtasks,
-                             slack, zoom, gitlab, setup (script-backed)
+commands/                    slash commands: /sophonic:{today,config}
+skills/                      obsidian, reminders, start-my-day, ask (pure) + gcal, gmail,
+                             gtasks, gdrive, slack, zoom, meeting-recap, gitlab, setup
+                             (script-backed) — every skill is also invocable as
+                             /sophonic:<name>
 scripts/                     gcal, gmail, gtasks, slack, zoom, gitlab (fetchers) +
                              auth, doctor, config (terminal utilities)
 sophonic/                    slim library the scripts import (auth + API code only)
@@ -121,12 +123,21 @@ Talk to Claude naturally ("what's on my calendar?", "roll over yesterday's tasks
 "remind me to send the deck Friday", "what did I miss on Slack?") — the matching skill
 activates. Or use the slash commands:
 
-- `/sophonic:start-my-day` — build today's note and merge Zoom action items, Google
-  Tasks, and Slack follow-ups, plus a summary of informational Slack channels.
+- `/sophonic:start-my-day` — build today's note and merge Zoom action items, Google Tasks,
+  Google Drive comments, and Slack follow-ups, plus a summary of informational Slack
+  channels. (Rollover is folded into this and into `/sophonic:obsidian` — there's no
+  separate rollover command.)
 - `/sophonic:today` — calendar + tasks due today + yesterday's unfinished (read-only).
-- `/sophonic:rollover` — carry unfinished tasks into today's note (idempotent).
+- `/sophonic:ask` — ad-hoc cross-source search (Obsidian, Tasks, Drive, Gmail, Slack,
+  Calendar, Zoom, GitLab) when you don't know which source has the answer.
+- `/sophonic:meeting-recap` — pull today's Zoom AI Companion meeting summaries into a
+  `## Meeting Recaps` section in today's note (idempotent — skips meetings already
+  captured without refetching).
 - `/sophonic:setup` — guided configuration.
 - `/sophonic:config` — view or change a config value directly (e.g. `set vault.path …`).
+
+Every skill is also its own slash command (`/sophonic:gcal`, `/sophonic:gdrive`,
+`/sophonic:slack`, …) for a fast, single-source lookup instead of `ask`'s full fan-out.
 
 ## Vault conventions
 
@@ -161,7 +172,7 @@ command in your terminal.
 1. Add the API/auth code to `sophonic/<name>.py` (keep it read-only and return plain data).
 2. Add a `scripts/<name>.py` argv → JSON shim (import from `sophonic/`, use `_common.run`).
 3. Add `skills/<name>/SKILL.md` documenting when to use it and the invocation contract.
-4. If it should participate in the morning brief, reference it from `skills/daybrief`.
+4. If it should participate in the morning brief, reference it from `skills/start-my-day`.
 
 ## Requirements
 

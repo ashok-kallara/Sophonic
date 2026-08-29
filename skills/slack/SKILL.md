@@ -20,7 +20,7 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/s
 - `unread` — unread channels/group-DMs/DMs as `{channel, type, mentions, id}`.
 - `digest` — unread *with content*, split into `actionable` (DMs / @-mentions) and
   `informational` (other channels), each carrying recent messages, latest snippet,
-  mention count, and a permalink. The [[daybrief]] skill summarizes the informational
+  mention count, and a permalink. The [[start-my-day]] skill summarizes the informational
   half into the note.
 - `followups` — from the last N days: @-mentions and DMs you haven't replied to, plus
   saved-for-later messages — the things that likely still need action.

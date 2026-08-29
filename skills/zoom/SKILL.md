@@ -31,7 +31,7 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/z
 
 - **Action items → tasks:** for each group, add a `### [<meeting> — <date>](<link>)`
   subheading under `## Meeting Action Items` with `- [ ] <item> #zoom`, deduped against
-  the note (see [[obsidian]]). This is exactly what [[daybrief]] does.
+  the note (see [[obsidian]]). This is exactly what [[start-my-day]] does.
 - **Save a note as a meeting note:** fetch it with `note --id`, then file it per the
   [[obsidian]] meeting-note contract (frontmatter `source: zoom`, the note `text`, and a
   backlink in today's daily note).
