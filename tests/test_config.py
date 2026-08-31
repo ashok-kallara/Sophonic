@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sophonic.config import Config, FeaturesConfig, GitLabConfig
+from sophonic.config import Config, FeaturesConfig, GitLabConfig, RaindropConfig
 
 
 def test_features_obsidian_default_true():
@@ -17,6 +17,10 @@ def test_features_gitlab_default_false():
     assert FeaturesConfig().gitlab is False
 
 
+def test_features_raindrop_default_false():
+    assert FeaturesConfig().raindrop is False
+
+
 def test_gitlab_config_defaults():
     cfg = GitLabConfig()
     assert cfg.url == ""
@@ -24,9 +28,25 @@ def test_gitlab_config_defaults():
     assert cfg.default_project == ""
 
 
+def test_raindrop_config_defaults():
+    cfg = RaindropConfig()
+    assert cfg.token == ""
+    assert cfg.default_collection == ""
+
+
 def test_config_has_gitlab_field():
     cfg = Config()
     assert isinstance(cfg.gitlab, GitLabConfig)
+
+
+def test_config_has_raindrop_field():
+    cfg = Config()
+    assert isinstance(cfg.raindrop, RaindropConfig)
+
+
+def test_vault_wiki_dir_defaults_to_wiki():
+    from sophonic.config import VaultConfig
+    assert VaultConfig().wiki_dir == "WIKI"
 
 
 def test_config_has_no_llm_field():
@@ -42,6 +62,18 @@ def test_gitlab_token_env_var(monkeypatch):
     try:
         assert load_config().gitlab.token == "glpat-test-token"
     finally:
+        load_config.cache_clear()
+
+
+def test_raindrop_token_env_var(tmp_config, monkeypatch):
+    from sophonic.config import load_config
+
+    monkeypatch.setenv("RAINDROP_TOKEN", "raindrop-test-token")
+    load_config.cache_clear()
+    try:
+        assert load_config().raindrop.token == "raindrop-test-token"
+    finally:
+        monkeypatch.delenv("RAINDROP_TOKEN", raising=False)
         load_config.cache_clear()
 
 

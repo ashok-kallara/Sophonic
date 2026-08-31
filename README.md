@@ -23,11 +23,11 @@ Sophonic splits cleanly along what a Claude subagent can and cannot do natively:
 .claude-plugin/plugin.json   the plugin manifest
 commands/                    slash commands: /sophonic:{today,config}
 skills/                      obsidian, reminders, start-my-day, ask (pure) + gcal, gmail,
-                             gtasks, gdrive, slack, zoom, meeting-recap, gitlab, setup
-                             (script-backed) — every skill is also invocable as
+                             gtasks, gdrive, slack, zoom, meeting-recap, gitlab, raindrop,
+                             setup (script-backed) — every skill is also invocable as
                              /sophonic:<name>
-scripts/                     gcal, gmail, gtasks, slack, zoom, gitlab (fetchers) +
-                             auth, doctor, config (terminal utilities)
+scripts/                     gcal, gmail, gtasks, slack, zoom, gitlab, raindrop
+                             (fetchers) + auth, doctor, config (terminal utilities)
 sophonic/                    slim library the scripts import (auth + API code only)
 ```
 
@@ -90,11 +90,12 @@ sophonic-auth google | slack | zoom        # authenticate
 The equivalent no-install form is `uv run python scripts/config.py …` (this is exactly
 what the skills call). Set `SOPHONIC_VAULT` in your environment to override the vault path.
 
-Config keys: `vault.{path,daily_dir,daily_prefix,meetings_dir}` ·
-`features.{obsidian,reminders,google,slack,zoom,gitlab}` ·
+Config keys: `vault.{path,daily_dir,daily_prefix,meetings_dir,wiki_dir}` ·
+`features.{obsidian,reminders,google,slack,zoom,gitlab,raindrop}` ·
 `google.{client_secret_file,scopes}` · `browser.zoom.engine` (`chromium`|`chrome`|`island`) ·
-`slack.workspace_host` · `gitlab.{url,default_project}`. Secrets (`.env`): `ZOOM_COOKIES`,
-`GITLAB_TOKEN`.
+`slack.workspace_host` · `gitlab.{url,default_project}` ·
+`raindrop.default_collection`. Secrets (`.env`): `ZOOM_COOKIES`, `GITLAB_TOKEN`,
+`RAINDROP_TOKEN`.
 
 ## Authenticate (run these in your own terminal)
 
@@ -116,6 +117,9 @@ sophonic-auth zoom     # prints how to paste your zoom.us cookies
   `scripts/config.py set-secret ZOOM_COOKIES --stdin`.
 - **GitLab** — set `gitlab.url` and the `GITLAB_TOKEN` secret (PAT with `api` scope);
   requires GitLab 17.3+ (the `/api/v4/mcp` endpoint).
+- **Raindrop.io** — no browser flow: create a permanent "test token" at
+  raindrop.io/settings/integrations (+ Create new app → Create test token) and set it as
+  the `RAINDROP_TOKEN` secret.
 
 ## Use it
 
@@ -133,6 +137,9 @@ activates. Or use the slash commands:
 - `/sophonic:meeting-recap` — pull today's Zoom AI Companion meeting summaries into a
   `## Meeting Recaps` section in today's note (idempotent — skips meetings already
   captured without refetching).
+- `/sophonic:raindrop` — turn saved Raindrop.io bookmarks (last 30 days by default) into
+  one reference note per article under `<vault>/WIKI/`, with a summary, expanded
+  context, key tenets, and takeaways — research papers get a plain-language rewrite.
 - `/sophonic:setup` — guided configuration.
 - `/sophonic:config` — view or change a config value directly (e.g. `set vault.path …`).
 
@@ -146,6 +153,8 @@ Every skill is also its own slash command (`/sophonic:gcal`, `/sophonic:gdrive`,
   `- [ ] text ⏫|🔼|🔽 📅 YYYY-MM-DD #tag`; completed `- [x] … ✅ YYYY-MM-DD`.
 - Tasks under `## Tasks`, backlinks under `## Notes`, meeting action items under
   `## Meeting Action Items`, meeting transcripts under `Work/Meetings/`.
+- Bookmark reference notes (from `/sophonic:raindrop`) under `WIKI/`, one markdown file
+  per article, plus a `WIKI/WIKI Index.md` grouped by month.
 
 The full contract lives in `skills/obsidian/SKILL.md`. Because vault edits are skill-driven
 (not enforced by code), the conventions there are what keep formatting and idempotent
@@ -162,6 +171,7 @@ uv run python scripts/slack.py followups --days 2
 uv run python scripts/zoom.py action-items --days 1
 uv run python scripts/gcal.py events-today
 uv run python scripts/gitlab.py tools
+uv run python scripts/raindrop.py list --days 30
 ```
 
 On an auth gap a script prints `{"needs_auth": true, "run": "..."}`; run the given

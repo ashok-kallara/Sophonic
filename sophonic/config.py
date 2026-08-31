@@ -17,6 +17,7 @@ class VaultConfig(BaseModel):
     daily_dir: str = "Daily"
     daily_prefix: str = "DAILY-"
     meetings_dir: str = "Work/Meetings"
+    wiki_dir: str = "WIKI"
 
 
 class FeaturesConfig(BaseModel):
@@ -26,6 +27,7 @@ class FeaturesConfig(BaseModel):
     slack: bool = True
     zoom: bool = True
     gitlab: bool = False
+    raindrop: bool = False
 
 
 class GoogleConfig(BaseModel):
@@ -69,6 +71,11 @@ class GitLabConfig(BaseModel):
     default_project: str = ""
 
 
+class RaindropConfig(BaseModel):
+    token: str = ""
+    default_collection: str = ""  # collection id or name; "" = all collections
+
+
 class Config(BaseModel):
     vault: VaultConfig = VaultConfig()
     features: FeaturesConfig = FeaturesConfig()
@@ -76,6 +83,7 @@ class Config(BaseModel):
     browser: BrowserConfig = BrowserConfig()
     slack: SlackConfig = SlackConfig()
     gitlab: GitLabConfig = GitLabConfig()
+    raindrop: RaindropConfig = RaindropConfig()
 
 
 @lru_cache(maxsize=1)
@@ -99,6 +107,9 @@ def load_config() -> Config:
 
     if gitlab_token := os.environ.get("GITLAB_TOKEN"):
         raw.setdefault("gitlab", {})["token"] = gitlab_token
+
+    if raindrop_token := os.environ.get("RAINDROP_TOKEN"):
+        raw.setdefault("raindrop", {})["token"] = raindrop_token
 
     return Config.model_validate(raw)
 

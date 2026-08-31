@@ -60,6 +60,14 @@ def doctor() -> dict:
         add("gitlab", ok, f"url={cfg.gitlab.url or '(unset)'} token={'set' if token_present else 'missing'}",
             "sophonic-config set gitlab.url <url> ; sophonic-config set-secret GITLAB_TOKEN --stdin")
 
+    # raindrop — pasted test token; probe validity via GET /user, not just presence
+    if cfg.features.raindrop:
+        from sophonic.raindrop import check_auth
+        probe = check_auth()
+        add("raindrop", probe["ok"], probe["detail"],
+            "sophonic-config set-secret RAINDROP_TOKEN --stdin  "
+            "(from raindrop.io/settings/integrations)")
+
     return {"ok": all(c["ok"] for c in checks), "checks": checks}
 
 

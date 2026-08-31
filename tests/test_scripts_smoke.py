@@ -35,9 +35,12 @@ def _run(*argv: str) -> str:
     ("gdrive.py", "mentioned-comments"),
     ("config.py", "show"),
     ("config.py", "get", "vault.path"),
+    ("raindrop.py", "check-auth"),
+    ("raindrop.py", "collections"),
 ])
 def test_script_emits_valid_json(argv, monkeypatch):
     monkeypatch.delenv("ZOOM_COOKIES", raising=False)
+    monkeypatch.delenv("RAINDROP_TOKEN", raising=False)
     out = _run(*argv)
     parsed = json.loads(out)  # raises if not valid JSON
     assert isinstance(parsed, (dict, list))
