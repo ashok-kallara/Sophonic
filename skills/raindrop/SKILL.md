@@ -79,7 +79,15 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/r
      more reliable to fetch and parse than the PDF. Normalize a `/pdf/<id>` link to
      `/abs/<id>` first.
 
-   If the fetch fails (paywall, JS-only page, 404, timeout), fall back to the item's
+   For a `x.com`/`twitter.com` link (or if WebFetch otherwise comes back empty/blocked —
+   paywall, JS-only page, anti-bot wall), fall back to the Playwright MCP tools before
+   giving up: `browser_navigate` to the link, then `browser_snapshot` — this renders the
+   page and returns the full text tree even logged out, which is enough to read a whole
+   thread (including quote-tweets and any linked long-form X Article — navigate to that
+   `/i/article/<id>` link too and snapshot it for the real body). Close the page/tab when
+   done with that item so tabs don't pile up across a batch.
+
+   Only after both WebFetch and the browser attempt fail, fall back to the item's
    `excerpt` + `note` + `highlights` and set `fetch_status: excerpt-only`. If there's
    truly nothing usable, still write the note — title, url, and frontmatter only, plus a
    one-line `## Summary` saying the fetch failed — with `fetch_status: failed`, so the
