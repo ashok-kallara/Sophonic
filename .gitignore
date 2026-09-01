@@ -24,3 +24,6 @@ wheels/
 
 # macOS
 .DS_Store
+
+# Playwright MCP scratch output (snapshots, console logs)
+.playwright-mcp/
