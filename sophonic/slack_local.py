@@ -268,11 +268,7 @@ def _conversation_digest(
             "ts": m.get("ts", ""),
         })
 
-    permalink = ""
-    if msgs:
-        pl = _api("chat.getPermalink", {"channel": cid, "message_ts": msgs[-1]["ts"]}, token, d_cookie)
-        if pl.get("ok"):
-            permalink = pl.get("permalink", "")
+    permalink = _permalink(cid, msgs[-1]["ts"], token, d_cookie) if msgs else ""
 
     return {
         "channel": channel,
@@ -395,9 +391,27 @@ def _message_text(cid: str, ts: str, token: str, d_cookie: str) -> str:
     return (msgs[0].get("text") if msgs else "") or ""
 
 
+def _team_domain(token: str, d_cookie: str) -> str:
+    """Workspace subdomain (e.g. "omada") for hand-building permalinks."""
+    info = _api("team.info", {}, token, d_cookie)
+    return ((info.get("team") or {}).get("domain") or "") if info.get("ok") else ""
+
+
 def _permalink(cid: str, ts: str, token: str, d_cookie: str) -> str:
+    """Permalink for a channel+ts.
+
+    Falls back to a hand-built `/archives/<channel>/p<ts>` URL when
+    chat.getPermalink itself fails — some Enterprise Grid tokens get
+    `enterprise_is_restricted` on that endpoint even though the message is
+    otherwise fully readable.
+    """
     pl = _api("chat.getPermalink", {"channel": cid, "message_ts": ts}, token, d_cookie)
-    return pl.get("permalink", "") if pl.get("ok") else ""
+    if pl.get("ok"):
+        return pl.get("permalink", "")
+    domain = _team_domain(token, d_cookie)
+    if not domain or not cid or not ts:
+        return ""
+    return f"https://{domain}.slack.com/archives/{cid}/p{ts.replace('.', '')}"
 
 
 def followups(days: int = 2, max_items: int = 20) -> dict[str, Any]:

@@ -237,6 +237,64 @@ def test_followups_mentions_dms_and_saved(monkeypatch):
     assert dm["ts"] == "301"                                  # newest unanswered message wins
 
 
+def test_followups_later_item_falls_back_when_getpermalink_restricted(monkeypatch):
+    """chat.getPermalink can return `enterprise_is_restricted` on some Enterprise
+    Grid tokens even though the message is otherwise readable — followups must
+    still surface a usable link for saved-for-later items in that case."""
+    monkeypatch.setattr(slack_local, "_get_credentials", lambda: ("xoxc-t", "xoxd-c"))
+
+    def fake(method, params, token, d_cookie):
+        if method == "auth.test":
+            return {"ok": True, "user_id": "UME", "user": "me.handle"}
+        if method == "search.messages":
+            return {"ok": True, "messages": {"matches": []}}
+        if method == "saved.list":
+            return {"ok": True, "saved_items": [
+                {"item_type": "message", "item_id": "C3", "ts": "400",
+                 "state": "in_progress", "is_archived": False},
+            ]}
+        if method == "conversations.history":
+            return {"ok": True, "messages": [{"user": "UX", "ts": "400", "text": "saved thing"}]}
+        if method == "conversations.info":
+            return {"ok": True, "channel": {"id": "C3", "name": "random"}}
+        if method == "chat.getPermalink":
+            return {"ok": False, "error": "enterprise_is_restricted"}
+        if method == "team.info":
+            return {"ok": True, "team": {"domain": "acme"}}
+        return {"ok": False, "error": "unexpected"}
+
+    monkeypatch.setattr(slack_local, "_api", fake)
+
+    result = slack_local.followups(days=3)
+    later = next(i for i in result["items"] if i["kind"] == "later")
+    assert later["permalink"] == "https://acme.slack.com/archives/C3/p400"
+
+
+# ── permalink fallback (chat.getPermalink restricted on some Enterprise Grid tokens) ───
+
+def test_permalink_uses_chat_getpermalink_when_available(monkeypatch):
+    monkeypatch.setattr(slack_local, "_api", lambda *a, **k: {"ok": True, "permalink": "https://x/p1"})
+    assert slack_local._permalink("C1", "1.0", "xoxc-t", "xoxd-c") == "https://x/p1"
+
+
+def test_permalink_falls_back_to_hand_built_url(monkeypatch):
+    def fake(method, params, token, d_cookie):
+        if method == "chat.getPermalink":
+            return {"ok": False, "error": "enterprise_is_restricted"}
+        if method == "team.info":
+            return {"ok": True, "team": {"domain": "acme"}}
+        return {"ok": False, "error": "unexpected"}
+
+    monkeypatch.setattr(slack_local, "_api", fake)
+    url = slack_local._permalink("C123", "1788206215.886269", "xoxc-t", "xoxd-c")
+    assert url == "https://acme.slack.com/archives/C123/p1788206215886269"
+
+
+def test_permalink_returns_empty_when_domain_unavailable(monkeypatch):
+    monkeypatch.setattr(slack_local, "_api", lambda *a, **k: {"ok": False, "error": "unexpected"})
+    assert slack_local._permalink("C1", "1.0", "xoxc-t", "xoxd-c") == ""
+
+
 def test_followups_needs_auth(monkeypatch):
     def raise_auth():
         raise slack_local.SlackAuthError("no cookie")
