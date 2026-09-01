@@ -25,18 +25,28 @@ surface that source's status (and the `run` command for the user's terminal) and
 ## Procedure
 
 1. **Daily note + rollover.** Ensure today's note exists (create from the [[obsidian]]
-   template if missing). Do an idempotent rollover of the most recent prior note's
-   unfinished tasks into `## Tasks`.
+   template if missing). Find the most recent prior daily note (per [[obsidian]]'s
+   rollover rule: glob `<daily_dir>/<daily_prefix>*.md`, parse the ISO date from each
+   name, pick the latest one strictly before today) and do an idempotent rollover of
+   its unfinished tasks into `## Tasks`. Keep that note's date around — step 3 reuses it
+   as the start of the Zoom window, so meetings from any gap (a weekend, a missed day)
+   get covered, not just today's.
 
 2. **Schedule (if Google is on).** `gcal.py events-today`. Insert a `## Schedule`
    section *before* `## Tasks` with one `- HH:MM — Title` line per event (`@ location`
    if present), or `- _No events_`. Replace the section on re-run, don't stack it.
 
-3. **Zoom action items.** `zoom.py action-items --days 1` (today's meetings; widen with
-   `--since/--until/--days` or `--owner` if the user asks). For each returned group,
+3. **Zoom action items.** Cover every meeting since the user's last brief, not just
+   today's: `zoom.py action-items --since <step 1's prior-note date> --until <today>`.
+   If step 1 found no prior note at all (first-ever run, empty vault), fall back to
+   `--days 1` (today only). Override with an explicit `--since/--until/--days` or
+   `--owner` if the user asks for something narrower/wider. For each returned group,
    under a `## Meeting Action Items` section (placed before `## Notes`), add a
    `### [<meeting> — <date>](<link>)` subheading and one `- [ ] <item> #zoom` per item.
-   Skip any item whose text is already present anywhere in the note.
+   Skip any item whose text is already present anywhere in *today's* note — that's what
+   keeps same-day re-runs idempotent; it's expected and fine for an item to already sit
+   in a prior day's note too, since the point of widening the window is to catch
+   meetings that happened before today's note existed.
 
 4. **Google Tasks.** `gtasks.py list`. For each task add
    `- [ ] [<title>](<link>) (Google Tasks: <list>) 📅 <due> #gtask` under `## Tasks`
@@ -69,4 +79,5 @@ surface that source's status (and the `run` command for the user's terminal) and
 ## Scope flags
 
 Honor the user's intent: "just Zoom", "skip Slack", "action items from the last 3 days"
-→ run only the relevant steps / pass `--days 3`. Default window for Zoom is today.
+→ run only the relevant steps / pass `--days 3`. Default window for Zoom is since the
+last daily note through today (step 3) — an explicit day count overrides that.
