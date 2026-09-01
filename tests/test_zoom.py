@@ -142,6 +142,60 @@ def test_extract_action_items_drops_narrative_prose():
     assert _extract_action_items(text) == ["Ship the doc", "Book the room"]
 
 
+def test_extract_action_items_handles_split_bullet_marker():
+    """Zoom Docs sometimes renders the bullet glyph on its own line, with the
+    item's text starting on the next line — the marker and text must be
+    rejoined before the bullet regex can see them together."""
+    from sophonic.zoom import _extract_action_items
+
+    text = "Action Items\n\n•\nAshok to send the design doc\n\n•\nPriya to schedule the follow-up\n"
+    assert _extract_action_items(text) == [
+        "Ashok to send the design doc",
+        "Priya to schedule the follow-up",
+    ]
+
+
+def test_extract_action_items_ignores_table_of_contents_heading():
+    """A leading table-of-contents block repeats section heading names with no
+    blank-line separation between them (unlike real headings, which are always
+    blank-line separated) — an "Action Items" line in that block must not open
+    the section prematurely and swallow unrelated bullets from other sections."""
+    from sophonic.zoom import _extract_action_items
+
+    text = (
+        "Key Outcomes\n"
+        "Decisions Made\n"
+        "Action Items\n"  # table of contents — no blank line before or after
+        "\n"
+        "Key Outcomes\n"
+        "\n"
+        "The team aligned on next steps.\n"
+        "\n"
+        "Decisions Made\n"
+        "\n"
+        "- Ship the doc\n"  # must NOT be captured — real section is Decisions Made
+        "\n"
+        "Action Items\n"  # real heading — preceded by a blank line
+        "\n"
+        "- Ashok to send the design doc\n"
+    )
+    assert _extract_action_items(text) == ["Ashok to send the design doc"]
+
+
+def test_extract_action_items_strips_citation_markers():
+    """AI Companion citation badges are rendered as invisible-character runs
+    (a BOM-like marker per digit group, joined by zero-width spaces) around the
+    real text — they must be stripped as a unit, not just have their invisible
+    characters deleted, or adjacent citation numbers smush together (e.g. two
+    badges "16" and "17" collapsing into "1617")."""
+    from sophonic.zoom import _extract_action_items
+
+    bom, zwsp = chr(0xFEFF), chr(0x200B)  # Zoom's per-digit citation marker / joiner
+    citation = f"{bom}16{zwsp}{bom}17"  # two chained citation badges
+    text = f"Action Items\n\n•\nConsult with Thuy on the timeline {citation}.{zwsp}\n"
+    assert _extract_action_items(text) == ["Consult with Thuy on the timeline."]
+
+
 def test_action_items_needs_cookies(monkeypatch):
     from sophonic import zoom
 
