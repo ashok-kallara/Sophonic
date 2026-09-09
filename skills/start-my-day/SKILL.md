@@ -27,8 +27,9 @@ surface that source's status (and the `run` command for the user's terminal) and
 1. **Daily note + rollover.** Ensure today's note exists (create from the [[obsidian]]
    template if missing). Find the most recent prior daily note (per [[obsidian]]'s
    rollover rule: glob `<daily_dir>/<daily_prefix>*.md`, parse the ISO date from each
-   name, pick the latest one strictly before today) and do an idempotent rollover of
-   its unfinished tasks into `## Tasks`. Keep that note's date around — step 3 reuses it
+   name, pick the latest one strictly before today) and do an idempotent rollover of its
+   unfinished tasks and follow-ups into `## Tasks` / `## Follow-up`, and its `## Notes`
+   subsections into today's `## Notes`. Keep that note's date around — step 3 reuses it
    as the start of the Zoom window, so meetings from any gap (a weekend, a missed day)
    get covered, not just today's.
 

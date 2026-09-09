@@ -36,10 +36,12 @@ Other configured locations (same `config.py get`): `vault.daily_dir` (default
 
   ## Tasks
 
+  ## Follow-up
+
   ## Notes
   ```
 
-## Task lines (Obsidian Tasks emoji format)
+## Task and follow-up lines (Obsidian Tasks emoji format)
 
 Match this format exactly so the Obsidian Tasks plugin parses them:
 
@@ -54,9 +56,14 @@ Match this format exactly so the Obsidian Tasks plugin parses them:
 
 Example: `- [ ] Email Dana the deck ⏫ 📅 2026-08-14 #followup`
 
+Follow-up items under `## Follow-up` use this identical format — same checkbox,
+priority, due-date, and tag conventions as `## Tasks`.
+
 ## Where things go
 
 - **Tasks** → directly under the `## Tasks` heading (insert as the first line after it).
+- **Follow-ups** → directly under the `## Follow-up` heading (insert as the first line
+  after it), same checkbox format as Tasks.
 - **Notes / backlinks** → under `## Notes`.
 - **Grouped tasks** (e.g. meeting action items) → a `## Meeting Action Items` section,
   placed *before* `## Notes`, with a `### ` subheading per group and checkbox items
@@ -69,21 +76,31 @@ Example: `- [ ] Email Dana the deck ⏫ 📅 2026-08-14 #followup`
 **Add a task.** Read today's note; insert the formatted task line immediately after
 `## Tasks`. If the note lacks `## Tasks`, append the heading + line at the end.
 
+**Add a follow-up.** Same as adding a task, but insert immediately after
+`## Follow-up`. If the note lacks `## Follow-up`, append the heading + line at the end.
+
 **List / scan tasks.** Open task lines match `- [ ] `. The due date is the `📅
 YYYY-MM-DD` token. Use Grep across `<vault>/**/*.md` for vault-wide scans (e.g. tasks
 due today, overdue, or due before a date).
 
 **Complete a task.** Change its `- [ ] ` to `- [x] ` and append ` ✅ <today>`.
 
-**Rollover (idempotent — read-diff-write).** Carry unfinished tasks forward:
+**Rollover (idempotent — read-diff-write).** Carry unfinished tasks, unfinished
+follow-ups, and Notes subsections forward:
 
 1. Find the most recent daily note *strictly before* the target day (usually today) —
    glob `<daily_dir>/<daily_prefix>*.md`, parse the ISO date from each name, pick the
    latest one before the target. A missing "yesterday" falls back to the last day the
    user actually took notes.
-2. Collect its incomplete (`- [ ] `) lines.
-3. Read the target note and add **only** the lines not already present verbatim.
-   Re-running must add nothing — dedupe on the exact line text.
+2. Collect its incomplete (`- [ ] `) lines from **both** `## Tasks` and `## Follow-up`.
+3. Collect every `### ` subsection under its `## Notes` — full heading + body, verbatim.
+4. Read the target note and add:
+   - Task lines to `## Tasks` and follow-up lines to `## Follow-up` — only the lines not
+     already present verbatim in the respective section.
+   - Each Notes subsection to `## Notes` — only if a `### ` subsection with that exact
+     heading text isn't already present there.
+   Re-running must add nothing — dedupe tasks/follow-ups on exact line text, dedupe
+   Notes subsections on heading text.
 
 **Meeting note.** File a transcript at
 `<vault>/<meetings_dir>/YYYY-MM-DD - <Title>.md` with this shape, then add a backlink
