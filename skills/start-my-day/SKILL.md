@@ -29,9 +29,9 @@ surface that source's status (and the `run` command for the user's terminal) and
    rollover rule: glob `<daily_dir>/<daily_prefix>*.md`, parse the ISO date from each
    name, pick the latest one strictly before today) and do an idempotent rollover of its
    unfinished tasks and follow-ups into `## Tasks` / `## Follow-up`, and its `## Notes`
-   subsections into today's `## Notes`. Keep that note's date around — step 3 reuses it
-   as the start of the Zoom window, so meetings from any gap (a weekend, a missed day)
-   get covered, not just today's.
+   subsections into today's `## Notes`. Keep that note's date around — steps 3 and 6
+   reuse it as the start of the Zoom and Slack windows, so meetings and messages from
+   any gap (a weekend, a missed day) get covered, not just today's.
 
 2. **Schedule (if Google is on).** `gcal.py events-today`. Insert a `## Schedule`
    section *before* `## Tasks` with one `- HH:MM — Title` line per event (`@ location`
@@ -61,8 +61,13 @@ surface that source's status (and the `run` command for the user's terminal) and
    Truncate `content` to ~60 chars for the excerpt. Skip items where the `file_link`
    and the first 40 chars of `content` already appear together in the note.
 
-6. **Slack.** `slack.py followups` → for each item add a reply task under `## Tasks`
-   tagged `#slack`, phrased by kind, with the permalink appended:
+6. **Slack.** Cover every day since the user's last brief, not just a fixed lookback:
+   `days = (today − step 1's prior-note date).days`, then
+   `slack.py followups --days <that>`. If step 1 found no prior note at all (first-ever
+   run, empty vault), fall back to `--days 1` (today only). Override with an explicit
+   `--days` if the user asks for something narrower/wider. For each returned item add a
+   reply task under `## Tasks` tagged `#slack`, phrased by kind, with the permalink
+   appended:
    - `mention`: `Reply in <channel> to <from>: <text> <permalink>`
    - `dm`: `Reply to <channel>: <text> <permalink>`
    - `later`: `Follow up (<channel>): <text> <permalink>`
@@ -80,5 +85,6 @@ surface that source's status (and the `run` command for the user's terminal) and
 ## Scope flags
 
 Honor the user's intent: "just Zoom", "skip Slack", "action items from the last 3 days"
-→ run only the relevant steps / pass `--days 3`. Default window for Zoom is since the
-last daily note through today (step 3) — an explicit day count overrides that.
+→ run only the relevant steps / pass `--days 3` to whichever source(s) that scopes.
+Default window for both Zoom (step 3) and Slack follow-ups (step 6) is since the last
+daily note through today — an explicit day count overrides that, per source.
