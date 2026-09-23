@@ -1,6 +1,6 @@
 ---
 name: start-my-day
-description: "Start my day" — build today's daily note and merge in Zoom meeting action items, open Google Tasks, Google Drive open comments, and Slack follow-ups, plus a summary of informational Slack channels. Use when the user says "start my day", "morning brief", "what's on today", or asks to pull everything into today's note.
+description: "Start my day" — build today's daily note and merge in Zoom meeting action items, open Google Tasks, Google Drive open comments, Gmail follow-ups, and Slack follow-ups, plus a summary of informational Slack channels. Use when the user says "start my day", "morning brief", "what's on today", or asks to pull everything into today's note.
 ---
 
 # Start my day
@@ -29,9 +29,9 @@ surface that source's status (and the `run` command for the user's terminal) and
    rollover rule: glob `<daily_dir>/<daily_prefix>*.md`, parse the ISO date from each
    name, pick the latest one strictly before today) and do an idempotent rollover of its
    unfinished tasks and follow-ups into `## Tasks` / `## Follow-up`, and its `## Notes`
-   subsections into today's `## Notes`. Keep that note's date around — steps 3 and 6
-   reuse it as the start of the Zoom and Slack windows, so meetings and messages from
-   any gap (a weekend, a missed day) get covered, not just today's.
+   subsections into today's `## Notes`. Keep that note's date around — steps 3, 6, and 7
+   reuse it as the start of the Zoom, Gmail, and Slack windows, so meetings and messages
+   from any gap (a weekend, a missed day) get covered, not just today's.
 
 2. **Schedule (if Google is on).** `gcal.py events-today`. Insert a `## Schedule`
    section *before* `## Tasks` with one `- HH:MM — Title` line per event (`@ location`
@@ -61,7 +61,16 @@ surface that source's status (and the `run` command for the user's terminal) and
    Truncate `content` to ~60 chars for the excerpt. Skip items where the `file_link`
    and the first 40 chars of `content` already appear together in the note.
 
-6. **Slack.** Cover every day since the user's last brief, not just a fixed lookback:
+6. **Gmail follow-ups (if Google is on).** Cover every day since the user's last brief,
+   not just a fixed lookback: `days = (today − step 1's prior-note date).days`, then
+   `gmail.py followups --days <that>`. If step 1 found no prior note at all (first-ever
+   run, empty vault), fall back to `--days 1` (today only). Override with an explicit
+   `--days` if the user asks for something narrower/wider. For each returned item add a
+   reply task under `## Tasks` tagged `#gmail`:
+   `- [ ] Reply to <from> re "<subject>": <snippet> [Open](<link>) #gmail`
+   Skip items whose `thread_id` already appears in the note.
+
+7. **Slack.** Cover every day since the user's last brief, not just a fixed lookback:
    `days = (today − step 1's prior-note date).days`, then
    `slack.py followups --days <that>`. If step 1 found no prior note at all (first-ever
    run, empty vault), fall back to `--days 1` (today only). Override with an explicit
@@ -78,13 +87,14 @@ surface that source's status (and the `run` command for the user's terminal) and
    you **replace** in place each run. Do not shell out to any LLM for this — that's your
    job now.
 
-7. **Report.** Summarize what changed: counts added per source (Zoom / Google Tasks /
-   Drive / Slack), how many tasks rolled over, and any sources that need auth or errored
-   (with the fix command).
+8. **Report.** Summarize what changed: counts added per source (Zoom / Google Tasks /
+   Drive / Gmail / Slack), how many tasks rolled over, and any sources that need auth or
+   errored (with the fix command).
 
 ## Scope flags
 
 Honor the user's intent: "just Zoom", "skip Slack", "action items from the last 3 days"
 → run only the relevant steps / pass `--days 3` to whichever source(s) that scopes.
-Default window for both Zoom (step 3) and Slack follow-ups (step 6) is since the last
-daily note through today — an explicit day count overrides that, per source.
+Default window for Zoom (step 3), Gmail follow-ups (step 6), and Slack follow-ups
+(step 7) is since the last daily note through today — an explicit day count overrides
+that, per source.

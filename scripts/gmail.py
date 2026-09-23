@@ -3,6 +3,7 @@
 
     uv run python scripts/gmail.py unread --max 20
     uv run python scripts/gmail.py search --query "is:unread from:boss" --max 10
+    uv run python scripts/gmail.py followups --days 2 --max-items 20
     uv run python scripts/gmail.py thread --thread-id 18f2a...
 """
 
@@ -24,6 +25,10 @@ def main() -> None:
     s.add_argument("--query", required=True)
     s.add_argument("--max", type=int, default=20)
 
+    f = sub.add_parser("followups", help="Inbox threads likely still needing a reply")
+    f.add_argument("--days", type=int, default=2)
+    f.add_argument("--max-items", type=int, default=20)
+
     t = sub.add_parser("thread", help="All messages in a thread, with bodies")
     t.add_argument("--thread-id", required=True)
 
@@ -35,6 +40,8 @@ def main() -> None:
         run(gmail.unread, max=args.max)
     elif args.action == "search":
         run(gmail.search, args.query, max=args.max)
+    elif args.action == "followups":
+        run(gmail.followups, days=args.days, max_items=args.max_items)
     else:
         run(gmail.thread, args.thread_id)
 

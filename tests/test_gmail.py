@@ -74,6 +74,102 @@ def test_search_uses_query(mock_svc):
     assert call_kwargs["q"] == "from:boss@example.com is:unread"
 
 
+def _mock_service_with_threads(my_email: str, list_thread_ids: list[str], threads: dict[str, dict]):
+    svc = MagicMock()
+    svc.users().getProfile().execute.return_value = {"emailAddress": my_email}
+    svc.users().messages().list().execute.return_value = {
+        "messages": [{"id": f"m{tid}", "threadId": tid} for tid in list_thread_ids]
+    }
+
+    def get_thread(userId, id, format, metadataHeaders):  # noqa: A002
+        return MagicMock(execute=MagicMock(return_value=threads[id]))
+
+    svc.users().threads().get.side_effect = get_thread
+    return svc
+
+
+def _thread_with_last_from(sender: str, subject: str = "Re: thing", snippet: str = "hi") -> dict:
+    return {
+        "messages": [
+            {"payload": {"headers": [
+                {"name": "From", "value": sender},
+                {"name": "Subject", "value": subject},
+                {"name": "Date", "value": "Sat, 03 May 2026 09:00:00 +0000"},
+            ]}, "snippet": snippet},
+        ]
+    }
+
+
+@patch("sophonic.gmail._service")
+def test_followups_excludes_threads_i_replied_to_last(mock_svc):
+    from sophonic.gmail import followups
+
+    mock_svc.return_value = _mock_service_with_threads(
+        my_email="me@example.com",
+        list_thread_ids=["t1", "t2"],
+        threads={
+            "t1": _thread_with_last_from("alice@example.com", "Need input", "please review"),
+            "t2": _thread_with_last_from("Me <me@example.com>", "Already answered"),
+        },
+    )
+
+    result = followups(days=3)
+    thread_ids = [i["thread_id"] for i in result["items"]]
+    assert thread_ids == ["t1"]
+    item = result["items"][0]
+    assert item["subject"] == "Need input"
+    assert item["from"] == "alice@example.com"
+    assert item["snippet"] == "please review"
+    assert item["link"] == "https://mail.google.com/mail/u/0/#inbox/t1"
+
+
+@patch("sophonic.gmail._service")
+def test_followups_dedupes_by_thread(mock_svc):
+    from sophonic.gmail import followups
+
+    svc = MagicMock()
+    svc.users().getProfile().execute.return_value = {"emailAddress": "me@example.com"}
+    svc.users().messages().list().execute.return_value = {
+        "messages": [{"id": "m1", "threadId": "t1"}, {"id": "m2", "threadId": "t1"}]
+    }
+    svc.users().threads().get.return_value.execute.return_value = _thread_with_last_from(
+        "bob@example.com"
+    )
+    mock_svc.return_value = svc
+
+    result = followups(days=3)
+    assert len(result["items"]) == 1
+
+
+@patch("sophonic.gmail._service")
+def test_followups_respects_max_items(mock_svc):
+    from sophonic.gmail import followups
+
+    mock_svc.return_value = _mock_service_with_threads(
+        my_email="me@example.com",
+        list_thread_ids=["t1", "t2", "t3"],
+        threads={
+            tid: _thread_with_last_from("other@example.com") for tid in ("t1", "t2", "t3")
+        },
+    )
+
+    result = followups(days=3, max_items=2)
+    assert len(result["items"]) == 2
+
+
+@patch("sophonic.gmail._service")
+def test_followups_empty(mock_svc):
+    from sophonic.gmail import followups
+
+    svc = MagicMock()
+    svc.users().getProfile().execute.return_value = {"emailAddress": "me@example.com"}
+    svc.users().messages().list().execute.return_value = {"messages": []}
+    mock_svc.return_value = svc
+
+    result = followups()
+    assert result == {"items": []}
+
+
 @patch("sophonic.gmail._service")
 def test_thread_returns_messages(mock_svc):
     from sophonic.gmail import thread

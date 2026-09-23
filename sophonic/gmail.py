@@ -64,6 +64,60 @@ def search(query: str, max: int = 20) -> list[dict[str, Any]]:
     return messages
 
 
+def followups(days: int = 2, max_items: int = 20) -> dict[str, Any]:
+    """Inbox threads from the last `days` days whose most recent message isn't from me.
+
+    Mirrors Slack's followups: search recent inbox mail, collapse to one entry per
+    thread (dedup on thread id), and keep only threads where I haven't replied since —
+    i.e. the thread's actual last message was sent by someone else. Returns
+    {"items": [...]}, each {thread_id, subject, from, date, snippet, link}.
+    """
+    from datetime import timedelta
+
+    from sophonic.dates import today
+
+    svc = _service()
+    profile = svc.users().getProfile(userId="me").execute()
+    my_email = (profile.get("emailAddress") or "").lower()
+
+    since = (today() - timedelta(days=days)).strftime("%Y/%m/%d")
+    query = f"in:inbox after:{since} -in:chats -category:promotions -category:social"
+    result = svc.users().messages().list(userId="me", q=query, maxResults=100).execute()
+
+    thread_ids: list[str] = []
+    for item in result.get("messages", []):
+        tid = item.get("threadId")
+        if tid and tid not in thread_ids:
+            thread_ids.append(tid)
+
+    items: list[dict[str, Any]] = []
+    for thread_id in thread_ids:
+        if len(items) >= max_items:
+            break
+        thread_result = svc.users().threads().get(
+            userId="me", id=thread_id, format="metadata",
+            metadataHeaders=["From", "Subject", "Date"],
+        ).execute()
+        msgs = thread_result.get("messages", [])
+        if not msgs:
+            continue
+        last = msgs[-1]
+        headers = {h["name"]: h["value"] for h in last.get("payload", {}).get("headers", [])}
+        frm = headers.get("From", "")
+        if my_email and my_email in frm.lower():
+            continue  # I sent the last message — no follow-up needed
+        items.append({
+            "thread_id": thread_id,
+            "subject": headers.get("Subject", "(no subject)"),
+            "from": frm,
+            "date": headers.get("Date", ""),
+            "snippet": last.get("snippet", ""),
+            "link": f"https://mail.google.com/mail/u/0/#inbox/{thread_id}",
+        })
+
+    return {"items": items}
+
+
 def thread(thread_id: str) -> dict[str, Any]:
     """Return all messages in a thread with body text."""
     svc = _service()
