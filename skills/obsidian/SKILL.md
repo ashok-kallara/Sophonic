@@ -68,6 +68,11 @@ priority, due-date, and tag conventions as `## Tasks`.
 - **Grouped tasks** (e.g. meeting action items) → a `## Meeting Action Items` section,
   placed *before* `## Notes`, with a `### ` subheading per group and checkbox items
   beneath it (see the start-my-day skill).
+- **Cross-source follow-ups clustered by topic** (Gmail/Slack/Drive replies) → a
+  `## Message Follow-ups` section, placed before `## Notes`, with a `### <Topic>`
+  subheading per cluster and checkbox items beneath it. A new item whose topic matches
+  an existing subheading (exact heading text) is appended under that subheading rather
+  than creating a duplicate one (see the start-my-day skill).
 - **Refreshable snapshots** (e.g. a Slack summary) → a `## <Name>` section you *replace*
   in place on each run rather than append to.
 

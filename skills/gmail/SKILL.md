@@ -18,9 +18,12 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/g
 
 - `unread` / `search` return message summaries `{id, thread_id, subject, from, date, snippet}`.
 - `search` uses Gmail query syntax (`is:unread`, `from:`, `subject:`, `after:`, …).
-- `followups` — inbox threads from the last N days whose most recent message isn't from
-  me (i.e. still awaiting my reply), excluding chats/promotions/social. Returns
-  `{"items": [...]}`, each `{thread_id, subject, from, date, snippet, link}`.
+- `followups` — Primary-tab inbox threads from the last N days whose most recent message
+  isn't from me (i.e. still awaiting my reply). Excludes chats and, since they're
+  surfaced elsewhere already, meeting invites (`gcal`) and Docs/Sheets comment
+  notifications (`gdrive`). `subject`/`from`/`snippet` are sanitized to a single line
+  with quote characters normalized, so they're safe to drop straight into a `- [ ] `
+  task line. Returns `{"items": [...]}`, each `{thread_id, subject, from, date, snippet, link}`.
 - `thread` returns every message in the thread with decoded `body` text — use it when
   you need the actual content, not just snippets.
 

@@ -171,6 +171,140 @@ def test_followups_empty(mock_svc):
 
 
 @patch("sophonic.gmail._service")
+def test_followups_sanitizes_quotes_and_newlines(mock_svc):
+    """A raw newline or embedded quote in a header/snippet must not survive into the
+    item — either would corrupt the `- [ ] ` task line it gets written into."""
+    from sophonic.gmail import followups
+
+    mock_svc.return_value = _mock_service_with_threads(
+        my_email="me@example.com",
+        list_thread_ids=["t1"],
+        threads={
+            "t1": _thread_with_last_from(
+                sender='"Alice Smith" <alice@example.com>',
+                subject='Re: "Q3 plan"\nfollow-up',
+                snippet='mentioned "the budget"\nand asked for input',
+            ),
+        },
+    )
+
+    item = followups(days=3)["items"][0]
+    assert "\n" not in item["subject"] and "\n" not in item["snippet"] and "\n" not in item["from"]
+    assert '"' not in item["subject"] and '"' not in item["snippet"] and '"' not in item["from"]
+    assert item["from"] == "'Alice Smith' <alice@example.com>"
+
+
+@patch("sophonic.gmail._service")
+def test_followups_decodes_html_entities(mock_svc):
+    """Gmail's snippet field is HTML-escaped (`&amp;`, `&#39;`, `&quot;`, …) — those
+    must be decoded, not written into the task verbatim."""
+    from sophonic.gmail import followups
+
+    mock_svc.return_value = _mock_service_with_threads(
+        my_email="me@example.com",
+        list_thread_ids=["t1"],
+        threads={
+            "t1": _thread_with_last_from(
+                "alice@example.com",
+                subject="Data &amp; AI sync",
+                snippet="I&#39;m looking forward &quot;to it&quot;",
+            ),
+        },
+    )
+
+    item = followups(days=3)["items"][0]
+    assert item["subject"] == "Data & AI sync"
+    assert item["snippet"] == "I'm looking forward 'to it'"
+
+
+@patch("sophonic.gmail._service")
+def test_followups_truncates_long_text(mock_svc):
+    from sophonic.gmail import followups
+
+    mock_svc.return_value = _mock_service_with_threads(
+        my_email="me@example.com",
+        list_thread_ids=["t1"],
+        threads={
+            "t1": _thread_with_last_from(
+                "alice@example.com", subject="S" * 150, snippet="B" * 300
+            ),
+        },
+    )
+
+    item = followups(days=3)["items"][0]
+    assert len(item["subject"]) == 120 and item["subject"].endswith("…")
+    assert len(item["snippet"]) == 200 and item["snippet"].endswith("…")
+
+
+@patch("sophonic.gmail._service")
+def test_followups_query_restricts_to_primary_and_excludes_docs(mock_svc):
+    from sophonic.gmail import followups
+
+    svc = MagicMock()
+    svc.users().getProfile().execute.return_value = {"emailAddress": "me@example.com"}
+    svc.users().messages().list().execute.return_value = {"messages": []}
+    mock_svc.return_value = svc
+
+    followups(days=3)
+
+    q = svc.users().messages().list.call_args.kwargs["q"]
+    assert "category:primary" in q
+    assert "-from:comments-noreply@docs.google.com" in q
+
+
+@patch("sophonic.gmail._service")
+def test_followups_excludes_docs_notification_sender(mock_svc):
+    """Belt-and-suspenders: even if the query-level filter lets one through, a thread
+    whose last message is from Docs comment-notifications is dropped."""
+    from sophonic.gmail import followups
+
+    mock_svc.return_value = _mock_service_with_threads(
+        my_email="me@example.com",
+        list_thread_ids=["t1", "t2"],
+        threads={
+            "t1": _thread_with_last_from(
+                "comments-noreply@docs.google.com", "Kalika mentioned you in a comment"
+            ),
+            "t2": _thread_with_last_from("alice@example.com", "Real follow-up"),
+        },
+    )
+
+    result = followups(days=3)
+    assert [i["thread_id"] for i in result["items"]] == ["t2"]
+
+
+@patch("sophonic.gmail._service")
+def test_followups_excludes_calendar_invite_subjects(mock_svc):
+    """Google Calendar sends invite/response mail from the organizer's own address, not
+    a fixed sender — only the subject template reliably identifies these."""
+    from sophonic.gmail import followups
+
+    invite_subjects = [
+        "Invitation: Sync @ Thu Sep 24, 2026",
+        "Updated invitation: Sync @ Thu Sep 24, 2026",
+        "Updated invitation with note: Data Org Dinner",
+        "Accepted: Kitty/Ashok Weekly 1:1",
+        "Declined: Some Meeting",
+        "Tentative: Some Meeting",
+        "Canceled event: AI Costs Monthly Sync",
+        "Canceled event with note: AI Costs Monthly Sync",
+    ]
+    thread_ids = [f"inv{i}" for i in range(len(invite_subjects))] + ["real1"]
+    threads = {
+        tid: _thread_with_last_from("someone@example.com", subject)
+        for tid, subject in zip(thread_ids, invite_subjects)
+    }
+    threads["real1"] = _thread_with_last_from("alice@example.com", "Real follow-up needed")
+
+    mock_svc.return_value = _mock_service_with_threads(
+        my_email="me@example.com", list_thread_ids=thread_ids, threads=threads
+    )
+
+    result = followups(days=3, max_items=50)
+    assert [i["thread_id"] for i in result["items"]] == ["real1"]
+
+
+@patch("sophonic.gmail._service")
 def test_thread_returns_messages(mock_svc):
     from sophonic.gmail import thread
 
