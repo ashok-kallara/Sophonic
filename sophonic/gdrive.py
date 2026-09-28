@@ -21,7 +21,7 @@ Drive's own export for spreadsheets only returns the first tab).
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sophonic.google_auth import get_credentials
@@ -192,6 +192,108 @@ def list_mentioned_comments(days: int | None = 30, max_files: int = 50) -> Any:
                     "reply_count": len(c.get("replies") or []),
                 })
 
+        return out
+
+    except Exception as exc:  # noqa: BLE001 — normalize into a caller-friendly dict
+        from googleapiclient.errors import HttpError
+
+        if isinstance(exc, HttpError) and getattr(exc, "resp", None) and exc.resp.status == 403:
+            raw = (exc.content or b"").decode("utf-8", "replace")
+            if any(k in raw for k in ("SERVICE_DISABLED", "accessNotConfigured", "has not been used")):
+                return {
+                    "error": (
+                        "Google Drive API is not enabled for your OAuth project. Enable it at "
+                        "https://console.cloud.google.com/apis/library/drive.googleapis.com "
+                        "and retry (allow a minute to propagate)."
+                    ),
+                }
+            return {
+                "needs_auth": True,
+                "detail": "Google Drive needs the drive.readonly scope, which your token lacks.",
+                "run": _SCOPE_FIX,
+            }
+        return {"error": str(exc)}
+
+
+def list_doc_action_items(days: int | None = 30, max_files: int = 50) -> Any:
+    """Action items in Doc 'Action items'/'Next steps'/etc. sections naming the caller.
+
+    Google Docs' Smart Canvas auto-detects lines like "<Name> to <do something>" under
+    an action-item heading and turns them into an assignable checklist chip (the
+    `#task=<id>` deep link) — but when the name is typed rather than a resolved
+    @-mention, Google never creates a companion Google Tasks entry, so there's nothing
+    for gtasks.py to see. This scans Doc content instead, via the shared section/bullet
+    extractor (sophonic.action_items), keeping only items mentioning the caller's Drive
+    display name — a plain case-insensitive substring match, so nicknames or name
+    variants that don't match the Drive profile name are missed.
+
+    A Doc is sometimes a single running "Agenda"/notes doc reused across many recurring
+    meetings (a new dated section prepended every week) rather than one doc per
+    meeting — its own `modifiedTime` only reflects the *most recent* edit and says
+    nothing about how old a section deep in its history is. `_extract_dated_action_items`
+    splits such a doc into per-meeting chunks at its own recurring date markers and
+    tags each item with that chunk's date, so items from a meeting older than `days`
+    are dropped here even though the file itself still passed the `modifiedTime`
+    file-level filter below. An item from a chunk with no detected date marker (the
+    common case — most Docs aren't a rolling multi-meeting doc at all) is always kept;
+    its age can't be judged, so it isn't assumed to be stale.
+
+    days=None is a full-Drive scan (paginate every Doc you can see) with no date
+    filtering at either level — same escape hatch as list_mentioned_comments. Returns a
+    flat list of {file_id, file_name, file_link, item}. On a missing-scope 403, returns
+    a needs_auth dict instead of raising.
+    """
+    from sophonic.action_items import _extract_dated_action_items
+
+    try:
+        svc = _service()
+        about = svc.about().get(fields="user(emailAddress,displayName)").execute()
+        me_name = (about.get("user") or {}).get("displayName", "")
+        if not me_name:
+            return []
+
+        cutoff = None
+        cutoff_date = None
+        if days is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+            cutoff_date = date.today() - timedelta(days=days)
+
+        q = f"mimeType='{_MIME_DOCUMENT}' and trashed=false"
+        if cutoff:
+            q += f" and modifiedTime > '{cutoff}'"
+
+        files: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while len(files) < max_files:
+            resp = svc.files().list(
+                q=q,
+                fields=f"nextPageToken,{_FILE_FIELDS}",
+                orderBy="modifiedTime desc",
+                pageSize=min(1000, max_files - len(files)),
+                pageToken=page_token,
+            ).execute()
+            files.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+        files = files[:max_files]
+
+        out: list[dict[str, Any]] = []
+        needle = me_name.lower()
+        for f in files:
+            file_id = f["id"]
+            text = _doc_text(svc, file_id)
+            for item_date, item in _extract_dated_action_items(text):
+                if needle not in item.lower():
+                    continue
+                if cutoff_date is not None and item_date is not None and item_date < cutoff_date:
+                    continue
+                out.append({
+                    "file_id": file_id,
+                    "file_name": f.get("name", ""),
+                    "file_link": f.get("webViewLink", ""),
+                    "item": item,
+                })
         return out
 
     except Exception as exc:  # noqa: BLE001 — normalize into a caller-friendly dict

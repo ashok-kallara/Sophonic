@@ -237,91 +237,10 @@ def note(doc_id: str) -> dict[str, Any]:
 
 
 # ── action items ─────────────────────────────────────────────────────────────
-
-# Headings that begin an action-item section (collection continues across adjacent ones).
-_ACTION_HEADING_RE = re.compile(
-    r"^\s*(action items?|next steps?|follow[\s-]?ups?|to-?dos?)\s*:?\s*$", re.I
-)
-# Non-action section headings that end collection.
-_STOP_HEADINGS = {
-    "quick recap", "recap", "summary", "key outcomes", "outcomes", "overview",
-    "details", "notes", "transcript", "manual notes", "attendees", "recording",
-    "decisions", "discussion",
-}
-_BULLET_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+(.*)$")
-# Zoom Docs sometimes renders a bullet glyph as its own line, with the item's text
-# starting on the next line(s) — this matches such a marker-only line.
-_BULLET_MARKER_ONLY_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s*$")
-# Zero-width/invisible marks Zoom Docs sprinkles into note text (format joiners, BOM).
-_ZERO_WIDTH_RE = re.compile("[\u200b\u200c\u200d\ufeff\u2060]")
-# AI Companion citation badges (e.g. a "\ufeff16\u200b\ufeff17" run): a "\ufeff<digits>"
-# marker per citation, optionally chained with a zero-width joiner — meaningless as
-# plain text once scraped, so strip the whole run rather than leaving digits smushed
-# together with no separator.
-_CITATION_RUN_RE = re.compile("\\s*(?:\ufeff\\d+\u200b?)+")
-
-
-def _merge_split_bullets(lines: list[str]) -> list[str]:
-    """Rejoin a bullet marker rendered on its own line with the item text that
-    follows it on the next line(s), so the bullet regex below can see marker and
-    text together instead of two separate, individually non-matching lines."""
-    merged: list[str] = []
-    i, n = 0, len(lines)
-    while i < n:
-        if _BULLET_MARKER_ONLY_RE.match(lines[i]):
-            marker = lines[i].strip()
-            i += 1
-            text_parts = []
-            while i < n and lines[i].strip():
-                text_parts.append(lines[i].strip())
-                i += 1
-            merged.append(f"{marker} {' '.join(text_parts)}".strip())
-            continue
-        merged.append(lines[i])
-        i += 1
-    return merged
-
-
-def _extract_action_items(text: str) -> list[str]:
-    """Pull the action-item lines out of a scraped Zoom AI note.
-
-    Collects list items under an "Action Items"/"Next Steps"/"Follow-ups" heading
-    until the next non-action section heading. Handles two Zoom Docs rendering
-    quirks: a bullet marker split onto its own line (rejoined via
-    `_merge_split_bullets` before scanning), and a leading table-of-contents block
-    that repeats the same heading names with no blank-line separation — a heading
-    only opens the section if it's preceded by a blank line (or starts the
-    document), which a real "Action Items" heading always is but a ToC entry
-    never is.
-    """
-    lines = _merge_split_bullets(text.splitlines())
-
-    items: list[str] = []
-    in_section = False
-    for i, raw in enumerate(lines):
-        # `stripped` keeps citation markers intact for the bullet match below;
-        # `heading_line` is only for heading/stop-heading comparison.
-        stripped = raw.strip()
-        heading_line = _ZERO_WIDTH_RE.sub("", stripped)
-        if _ACTION_HEADING_RE.match(heading_line):
-            preceded_by_blank = i == 0 or not lines[i - 1].strip()
-            if in_section or preceded_by_blank:
-                in_section = True
-            continue
-        if not in_section or not stripped:
-            continue
-        norm = heading_line.lower().rstrip(":").strip()
-        if heading_line.startswith("#") or norm in _STOP_HEADINGS:
-            break
-        m = _BULLET_RE.match(stripped)
-        if not m:
-            continue  # only itemized entries become tasks — skip narrative/summary prose
-        item = re.sub(r"^\[[ xX]\]\s*", "", m.group(1)).strip()  # drop any checkbox marker
-        item = _CITATION_RUN_RE.sub("", item)
-        item = _ZERO_WIDTH_RE.sub("", item).strip()
-        if item:
-            items.append(item)
-    return items
+# Extraction logic lives in sophonic.action_items (shared with the Google Docs
+# equivalent in sophonic.gdrive) — re-exported here so existing callers/tests keep
+# working via `from sophonic.zoom import _extract_action_items`.
+from sophonic.action_items import _extract_action_items  # noqa: E402
 
 
 def _resolve_range(on, since, until, days, ref: date) -> tuple[date, date]:

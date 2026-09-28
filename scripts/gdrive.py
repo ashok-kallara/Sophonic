@@ -17,7 +17,12 @@ covers everything you can see, no day/--all tiering needed) and returns an excer
 match. Needs the spreadsheets.readonly scope in addition to drive.readonly, to read every
 tab of a matching spreadsheet rather than just the first one.
 
-Either action can print {"needs_auth": true, "run": "..."} if the token lacks a
+`doc-action-items` scans Doc "Action items"/"Next steps"/etc. sections for lines naming
+you — these are Google Docs' own Smart Canvas action-item chips, which don't create a
+Google Tasks entry unless assigned via a resolved @-mention, so gtasks.py can't see them.
+Supports the same --days/--max-files/--all tiering as `mentioned-comments`.
+
+Any action can print {"needs_auth": true, "run": "..."} if the token lacks a
 required scope.
 """
 
@@ -48,6 +53,14 @@ def main() -> None:
     sc.add_argument("--max-files", type=int, default=20, help="Max matching files to return (default 20)")
     sc.add_argument("--context-chars", type=int, default=200, help="Characters of context around the match in each excerpt (default 200)")
 
+    dai = sub.add_parser(
+        "doc-action-items",
+        help="Action items in Doc 'Action items' sections that name you (not backed by Google Tasks)",
+    )
+    dai.add_argument("--days", type=int, default=30, help="Look back this many days (default 30); ignored if --all is set")
+    dai.add_argument("--max-files", type=int, default=None, help="Max files to check (default 50, or 2000 with --all)")
+    dai.add_argument("--all", action="store_true", help="Full scan: ignore --days, paginate through every Doc you can access")
+
     args = p.parse_args()
 
     from sophonic import gdrive
@@ -56,6 +69,10 @@ def main() -> None:
         days = None if args.all else args.days
         max_files = args.max_files if args.max_files is not None else (2000 if args.all else 50)
         run(gdrive.list_mentioned_comments, days=days, max_files=max_files)
+    elif args.action == "doc-action-items":
+        days = None if args.all else args.days
+        max_files = args.max_files if args.max_files is not None else (2000 if args.all else 50)
+        run(gdrive.list_doc_action_items, days=days, max_files=max_files)
     else:
         run(
             gdrive.search_content,

@@ -2,24 +2,30 @@
 name: gdrive
 description: >
   Google Drive, read-only: (1) unresolved comments on Docs/Sheets where the user is
-  @mentioned or assigned, and (2) full-text search across the content of Docs and
-  Sheets. Use when the user asks "what comments am I mentioned in", "open comments on
-  my docs", "where do I need to reply in Drive" — or "find the doc that mentions X",
-  "search my Google Docs for Y", "what does that spreadsheet say about Z".
+  @mentioned or assigned, (2) full-text search across the content of Docs and Sheets,
+  and (3) Doc "Action items" sections naming the user (Google Docs' own action-item
+  chips, which aren't backed by Google Tasks). Use when the user asks "what comments am
+  I mentioned in", "open comments on my docs", "where do I need to reply in Drive" — or
+  "find the doc that mentions X", "search my Google Docs for Y", "what does that
+  spreadsheet say about Z" — or "what action items in docs are assigned to me".
 ---
 
 # Google Drive
 
-Two independent read-only capabilities, both via thin fetch-scripts:
+Three independent read-only capabilities, all via thin fetch-scripts:
 
 - **Comments** — unresolved comments where you're @mentioned or assigned. Prioritizes
   recent files; a full-Drive fallback exists but must be offered, never auto-run.
 - **Content search** — full-text search across what your Docs/Sheets actually say, with
   an excerpt per match. Already covers everything you can see by default — no
   recent/full tiering needed here.
+- **Doc action items** — lines under a Doc's "Action items" heading that name you.
+  These are Smart Canvas action-item chips, not Google Tasks (see [[gtasks]] for why).
+  Same recent/full tiering as comments.
 
 Use comments for "did I miss a reply"; use content search for "where did I write X" or
-"which doc/sheet covers Y".
+"which doc/sheet covers Y"; use doc action items for "what am I on the hook for in
+meeting notes/docs".
 
 ## Comments
 
@@ -91,6 +97,45 @@ exact query text never reappears in the exported content, `excerpt` falls back t
 leading preview instead). A file whose content couldn't be fetched carries
 `excerpt: null` plus `needs_auth`/`error` on that entry instead of failing the whole
 search — expected while only one of the two Drive scopes has been granted (see Auth).
+
+## Doc action items
+
+```
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" doc-action-items
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" doc-action-items --days 7 --max-files 20
+uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/gdrive.py" doc-action-items --all
+```
+
+Google Docs' Smart Canvas auto-detects lines like "\<Name\> to \<do something\>" under an
+"Action items"/"Next steps"/"Follow-ups"/"To-dos" heading and turns them into an
+assignable checklist chip — the `#task=<id>` fragment you see when opening one. But when
+the name is typed rather than a resolved `@`-mention, Google never creates a companion
+Google Tasks entry, so [[gtasks]] has nothing to read. This scans Doc text directly
+instead, using the same section/bullet parser Zoom meeting notes use.
+
+- `--days` / `--max-files` / `--all` — identical semantics to `mentioned-comments`
+  above (recent-Docs-only by default, full-Drive scan opt-in, never auto-run). This also
+  bounds section age, not just file age: a Doc is sometimes one running "Agenda"/notes
+  doc reused across many recurring meetings (a new dated section prepended every week)
+  rather than one doc per meeting — its `modifiedTime` only reflects the *most recent*
+  edit, so a file-level day filter alone can't tell a section deep in its history is
+  stale. This recognizes a doc's own recurring date markers (a bare "9/25/2026" line, or
+  a leading written date like "Sep 25, 2026 | ...") and confines each meeting's action
+  items to their own dated chunk, dropping items from a meeting older than `--days`. An
+  item with no detected date marker at all (a normal, non-rolling Doc — the common case)
+  is always kept, since its age can't be judged.
+
+Returns `[{file_id, file_name, file_link, item}]`. `item` is the raw action-item text
+(name included, e.g. `"Jamie Rivera to ship the report"`).
+
+- The name match is a plain case-insensitive **substring** check against your Drive
+  display name — same imprecision tradeoff as informal `@name` mentions in comments
+  (see above): a nickname or spelled-differently name is missed, and a line that merely
+  *references* you without you being the owner (e.g. "Per Jamie Rivera: ...") can still
+  match if it sits under an Action-items heading. Treat results as candidates to
+  skim, not a guaranteed-accurate list.
+- No per-item deep link is available — same limitation as comments; `file_link` is
+  file-level only.
 
 ## Auth
 

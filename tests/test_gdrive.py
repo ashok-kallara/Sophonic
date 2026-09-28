@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,12 +21,14 @@ class _FakeDriveApi:
         self,
         user_email: str,
         files: list,
-        comments_by_file: dict,
+        comments_by_file: dict | None = None,
         doc_text_by_file: dict | None = None,
+        user_display_name: str = "",
     ):
         self._user_email = user_email
+        self._user_display_name = user_display_name
         self._pages = files if files and isinstance(files[0], list) else [files]
-        self._comments_by_file = comments_by_file
+        self._comments_by_file = comments_by_file or {}
         self._doc_text_by_file = doc_text_by_file or {}
         self.file_list_calls: list[dict] = []
         self.comments_list_calls: list[dict] = []
@@ -33,7 +36,9 @@ class _FakeDriveApi:
 
     def about(self):
         api = MagicMock()
-        api.get.return_value.execute.return_value = {"user": {"emailAddress": self._user_email}}
+        api.get.return_value.execute.return_value = {
+            "user": {"emailAddress": self._user_email, "displayName": self._user_display_name}
+        }
         return api
 
     def files(self):
@@ -114,6 +119,7 @@ class _FakeSheetsApi:
 
 
 _ME = "me@example.com"
+_ME_NAME = "Jamie Rivera"
 _OTHER = "other@example.com"
 
 _FAKE_DOC = {
@@ -463,3 +469,219 @@ def test_api_disabled_returns_enable_hint(monkeypatch):
     assert "needs_auth" not in result
     assert "not enabled" in result["error"]
     assert "console.cloud.google.com" in result["error"]
+
+
+# ── list_doc_action_items ────────────────────────────────────────────────────
+
+
+def test_doc_action_item_naming_me_is_returned(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        doc_text_by_file={
+            "doc1": f"Action items\n* {_ME_NAME} to ship the report\n* Someone Else to do other thing",
+        },
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items()
+    assert len(result) == 1
+    item = result[0]
+    assert item["file_id"] == "doc1"
+    assert item["file_name"] == "Q3 Budget"
+    assert item["file_link"] == "https://docs.google.com/document/d/doc1/edit"
+    assert item["item"] == f"{_ME_NAME} to ship the report"
+
+
+def test_doc_action_item_not_naming_me_is_skipped(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        doc_text_by_file={"doc1": "Action items\n* Someone Else to do other thing"},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    assert gdrive.list_doc_action_items() == []
+
+
+def test_doc_action_item_match_is_case_insensitive(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        doc_text_by_file={"doc1": f"Action items\n* {_ME_NAME.upper()} to send email"},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items()
+    assert len(result) == 1
+    assert result[0]["item"] == f"{_ME_NAME.upper()} to send email"
+
+
+def test_doc_action_items_scans_multiple_docs(monkeypatch):
+    from sophonic import gdrive
+
+    doc_a = {**_FAKE_DOC, "id": "docA", "name": "Doc A"}
+    doc_b = {**_FAKE_DOC, "id": "docB", "name": "Doc B"}
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[doc_a, doc_b],
+        doc_text_by_file={
+            "docA": f"Action items\n* {_ME_NAME} to review A",
+            "docB": f"Action items\n* {_ME_NAME} to review B",
+        },
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items()
+    by_file = {r["file_id"]: r["item"] for r in result}
+    assert by_file == {"docA": f"{_ME_NAME} to review A", "docB": f"{_ME_NAME} to review B"}
+
+
+def test_doc_action_items_query_only_filters_documents(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        doc_text_by_file={"doc1": ""},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    gdrive.list_doc_action_items()
+
+    q = fake.file_list_calls[0]["q"]
+    assert "application/vnd.google-apps.document" in q
+    assert "spreadsheet" not in q
+
+
+def test_doc_action_items_default_days_filters_query(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(user_email=_ME, user_display_name=_ME_NAME, files=[_FAKE_DOC])
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    gdrive.list_doc_action_items(days=30)
+
+    assert "modifiedTime >" in fake.file_list_calls[0]["q"]
+
+
+def test_doc_action_items_days_none_is_a_full_scan_with_no_time_filter(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(user_email=_ME, user_display_name=_ME_NAME, files=[_FAKE_DOC])
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    gdrive.list_doc_action_items(days=None, max_files=50)
+
+    assert "modifiedTime >" not in fake.file_list_calls[0]["q"]
+
+
+def test_doc_action_items_empty_display_name_returns_empty(monkeypatch):
+    """Guard against an empty display name matching every item via `"" in item`."""
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name="",
+        files=[_FAKE_DOC],
+        doc_text_by_file={"doc1": "Action items\n* Someone to do something"},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    assert gdrive.list_doc_action_items() == []
+
+
+def test_doc_action_items_drops_items_from_an_old_dated_section(monkeypatch):
+    """Regression guard for a rolling multi-meeting doc (one running agenda doc, a new
+    dated section prepended every week): the file's own modifiedTime stays "recent"
+    forever, but an item from a meeting older than `days` must still be dropped."""
+    from sophonic import gdrive
+
+    recent = date.today() - timedelta(days=1)
+    old = date.today() - timedelta(days=100)
+    text = (
+        f"{recent.month}/{recent.day}/{recent.year}\n"
+        f"Action items\n"
+        f"* {_ME_NAME} to ship the recent report\n"
+        f"{old.month}/{old.day}/{old.year}\n"
+        f"Action items\n"
+        f"* {_ME_NAME} to file the old thing\n"
+    )
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        doc_text_by_file={"doc1": text},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items(days=7)
+    assert [r["item"] for r in result] == [f"{_ME_NAME} to ship the recent report"]
+
+
+def test_doc_action_items_keeps_items_with_no_detected_date(monkeypatch):
+    """A plain, non-rolling Doc has no date markers at all — its items can't be judged
+    for staleness and must not be dropped just because `days` was set."""
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        doc_text_by_file={"doc1": f"Action items\n* {_ME_NAME} to ship the report"},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items(days=7)
+    assert len(result) == 1
+
+
+def test_doc_action_items_full_scan_keeps_old_dated_items_too(monkeypatch):
+    """days=None (--all) drops date filtering entirely, at both the file and the
+    section level — matches the existing full-scan escape hatch semantics."""
+    from sophonic import gdrive
+
+    old = date.today() - timedelta(days=400)
+    text = (
+        f"{old.month}/{old.day}/{old.year}\n"
+        f"Action items\n"
+        f"* {_ME_NAME} to file the ancient thing\n"
+    )
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        doc_text_by_file={"doc1": text},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items(days=None, max_files=50)
+    assert [r["item"] for r in result] == [f"{_ME_NAME} to file the ancient thing"]
+
+
+def test_doc_action_items_scope_error_returns_needs_auth(monkeypatch):
+    from sophonic import gdrive
+    from googleapiclient.errors import HttpError
+
+    resp = MagicMock()
+    resp.status = 403
+
+    def boom():
+        raise HttpError(resp=resp, content=b"insufficient scope for drive")
+
+    monkeypatch.setattr(gdrive, "_service", boom)
+    result = gdrive.list_doc_action_items()
+    assert result["needs_auth"] is True
+    assert "drive.readonly" in result["detail"]
+    assert "drive.readonly" in result["run"]
