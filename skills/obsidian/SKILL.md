@@ -91,21 +91,35 @@ due today, overdue, or due before a date).
 **Complete a task.** Change its `- [ ] ` to `- [x] ` and append ` ✅ <today>`.
 
 **Rollover (idempotent — read-diff-write).** Carry unfinished tasks, unfinished
-follow-ups, and Notes subsections forward:
+follow-ups, unfinished Meeting Action Items / Message Follow-ups, and Notes subsections
+forward:
 
 1. Find the most recent daily note *strictly before* the target day (usually today) —
    glob `<daily_dir>/<daily_prefix>*.md`, parse the ISO date from each name, pick the
    latest one before the target. A missing "yesterday" falls back to the last day the
    user actually took notes.
 2. Collect its incomplete (`- [ ] `) lines from **both** `## Tasks` and `## Follow-up`.
-3. Collect every `### ` subsection under its `## Notes` — full heading + body, verbatim.
-4. Read the target note and add:
+3. Collect every `### ` subsection under `## Meeting Action Items` and
+   `## Message Follow-ups` — but only each subsection's still-incomplete (`- [ ] `) item
+   lines; drop a subsection entirely once every one of its items is checked off. These
+   two sections have no other carry-forward mechanism — they're populated purely by a
+   fresh, day-windowed fetch each run (e.g. "since the last daily note") — so an item
+   that's still unchecked but falls outside the *next* run's window before being
+   addressed would otherwise vanish with no trace. This step is what prevents that.
+4. Collect every `### ` subsection under its `## Notes` — full heading + body, verbatim.
+5. Read the target note and add:
    - Task lines to `## Tasks` and follow-up lines to `## Follow-up` — only the lines not
      already present verbatim in the respective section.
+   - Each carried Meeting Action Items / Message Follow-ups subsection: if a `### `
+     subsection with that exact heading text already exists under the same `## `
+     section, add only the item lines not already present verbatim under it (checked
+     items are never re-added); otherwise append the subsection (heading + its
+     still-incomplete items) at the end of that `## ` section.
    - Each Notes subsection to `## Notes` — only if a `### ` subsection with that exact
      heading text isn't already present there.
    Re-running must add nothing — dedupe tasks/follow-ups on exact line text, dedupe
-   Notes subsections on heading text.
+   Meeting Action Items/Message Follow-ups items on exact line text within their
+   subsection, dedupe Notes subsections on heading text.
 
 **Meeting note.** File a transcript at
 `<vault>/<meetings_dir>/YYYY-MM-DD - <Title>.md` with this shape, then add a backlink
