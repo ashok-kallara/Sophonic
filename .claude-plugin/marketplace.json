@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "sophonic",
-      "source": ".",
+      "source": "./",
       "description": "Obsidian-native assistant as pure Claude Code skills \u2014 daily notes, tasks, rollover, and a morning brief, plus thin scripts for Google, Slack, Zoom, and GitLab. No MCP server.",
       "keywords": [
         "obsidian",
