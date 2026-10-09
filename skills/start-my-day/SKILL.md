@@ -1,6 +1,7 @@
 ---
 name: start-my-day
-description: "Start my day" — build today's daily note and merge in Zoom meeting action items, open Google Tasks, Doc action items, and Gmail/Slack/Drive follow-ups clustered by topic, plus a summary of informational Slack channels. Use when the user says "start my day", "morning brief", "what's on today", or asks to pull everything into today's note.
+description: >
+  Build today's daily note ("start my day") — merging in Zoom meeting action items, open Google Tasks, Doc action items, and Gmail/Slack/Drive follow-ups clustered by topic, plus a summary of informational Slack channels. Use when the user says "start my day", "morning brief", "what's on today", or asks to pull everything into today's note.
 ---
 
 # Start my day
