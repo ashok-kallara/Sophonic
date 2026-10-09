@@ -64,7 +64,7 @@ browser for the same thing.)
    hand, it must run in the plugin's own environment (the browser build is tied to the
    Playwright version in `uv.lock`, which `uv tool install` does not use):
    ```bash
-   uv run --project ~/.claude/plugins/cache/sophonic/sophonic/<version> playwright install chromium
+   uv run --project ~/.claude/plugins/cache/sophonic/sophonic/<commit-sha> playwright install chromium
    ```
    (or `uv run playwright install chromium` from a clone).
 
@@ -72,8 +72,9 @@ No `ANTHROPIC_API_KEY` / `SOPHONIC_LLM_API_KEY` is needed — Claude Code provid
 
 **Updating:** `/plugin marketplace update sophonic`, then `/plugin update sophonic@sophonic`
 (or enable auto-update for the marketplace in `/plugin`) and `/reload-plugins`. Refresh the
-terminal commands with `uv tool upgrade sophonic`. The plugin only updates when `version`
-changes in `.claude-plugin/plugin.json`, so bump it with each release.
+terminal commands with `uv tool upgrade sophonic`. The plugin deliberately sets no `version`,
+so Claude Code uses the git commit SHA: every push to `main` is a new version, with nothing
+to bump.
 
 **From a local clone (development):**
 ```bash
