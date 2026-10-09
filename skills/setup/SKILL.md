@@ -27,17 +27,19 @@ All commands below run with the Bash tool as:
 
 3. **Secrets — never type them into a command yourself.** A secret must not appear in
    your tool calls or the transcript. Tell the user to run this in **their own terminal**
-   (from the plugin directory) and paste when prompted:
+   and paste when prompted:
    ```
-   uv run python scripts/config.py set-secret <ENV_NAME> --stdin
+   sophonic-config set-secret <ENV_NAME> --stdin
    ```
+   If `sophonic-config` isn't found, they haven't installed the terminal commands yet:
+   `uv tool install git+https://github.com/ashok-kallara/Sophonic`.
    `ZOOM_COOKIES` for Zoom, `GITLAB_TOKEN` for GitLab. The `doctor` `fix` field names the
    exact command.
 
 4. **Browser / OAuth / Keychain — hand off to the user.** You cannot open a browser or
    read the Keychain. For a `google.auth` gap have them run
-   `uv run python scripts/auth.py google` (opens OAuth consent); for `slack` have them run
-   `uv run python scripts/auth.py slack` (approves the Keychain prompt). For
+   `sophonic-auth google` (opens OAuth consent); for `slack` have them run
+   `sophonic-auth slack` (approves the Keychain prompt). For
    `google.client_secret`, tell them to download a **Desktop app** OAuth client JSON from
    Google Cloud and save it at the path in the check `detail`.
 
@@ -59,10 +61,12 @@ the `ZOOM_COOKIES` secret. No LLM key is required — Claude Code is the model.
 
 - The vault work (daily notes, tasks, rollover) is pure skill — it only needs a valid
   `vault.path`. The scripts exist only for the auth-bound sources (Google/Slack/Zoom/GitLab).
-- Terminal users who ran `uv sync` can use the shorthand wrappers instead of the
-  `uv run python scripts/…` form: `sophonic-config …`, `sophonic-doctor`, `sophonic-auth …`.
-  `doctor`'s `fix` fields use those names. When *you* run a command via Bash, use the
+- The user-facing commands `sophonic-config …`, `sophonic-doctor`, `sophonic-auth …` come
+  from `uv tool install git+https://github.com/ashok-kallara/Sophonic`; `doctor`'s `fix`
+  fields and every hint the scripts print use those names. When *you* run a command via Bash, use the
   `uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/…"` form,
   which works whether or not the wrappers are installed.
 - `uv` must be installed; the first run of any script triggers `uv sync`. Zoom also needs
-  Playwright's Chromium — install once with `uv run playwright install chromium`.
+  Playwright's Chromium — install once with
+  `uv run --project "${CLAUDE_PLUGIN_ROOT}" playwright install chromium` (it must run in the
+  plugin's environment: the browser build is tied to the locked Playwright version).

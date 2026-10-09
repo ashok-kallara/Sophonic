@@ -30,4 +30,4 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/g
 ## Auth
 
 Needs Google OAuth. On an auth error, tell the user to run
-`uv run python scripts/auth.py google` in their terminal. Setup: [[setup]].
+`sophonic-auth google` in their terminal. Setup: [[setup]].

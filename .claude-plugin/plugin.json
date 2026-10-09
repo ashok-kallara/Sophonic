@@ -1,9 +1,22 @@
 {
   "name": "sophonic",
-  "description": "Obsidian-native assistant as pure Claude Code skills. Claude edits your vault directly (daily notes, tasks, rollover) and calls thin scripts only for auth-bound sources — Google, Slack, Zoom, GitLab. No MCP server, no CLI.",
+  "description": "Obsidian-native assistant as pure Claude Code skills. Claude edits your vault directly (daily notes, tasks, rollover) and calls thin scripts only for auth-bound sources \u2014 Google, Slack, Zoom, GitLab. No MCP server, no CLI.",
   "version": "0.2.0",
   "author": {
-    "name": "Sophonic"
+    "name": "Ashok Kallarakuzhi",
+    "url": "https://github.com/ashok-kallara"
   },
-  "keywords": ["obsidian", "productivity", "daily-notes", "tasks", "slack", "zoom", "gitlab"]
+  "keywords": [
+    "obsidian",
+    "productivity",
+    "daily-notes",
+    "tasks",
+    "slack",
+    "zoom",
+    "gitlab",
+    "raindrop",
+    "google"
+  ],
+  "homepage": "https://github.com/ashok-kallara/Sophonic",
+  "repository": "https://github.com/ashok-kallara/Sophonic"
 }

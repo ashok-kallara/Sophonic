@@ -22,12 +22,12 @@ _PER_PAGE = 50
 
 _NEEDS_AUTH = {
     "needs_auth": True,
-    "run": "uv run python scripts/config.py set-secret RAINDROP_TOKEN --stdin",
+    "run": "sophonic-config set-secret RAINDROP_TOKEN --stdin",
     "detail": (
         "Raindrop.io token is missing or invalid. Create a test token at "
         "raindrop.io/settings/integrations (+ Create new app → Create test token) and "
         "paste it into "
-        "`uv run python scripts/config.py set-secret RAINDROP_TOKEN --stdin`."
+        "`sophonic-config set-secret RAINDROP_TOKEN --stdin`."
     ),
 }
 

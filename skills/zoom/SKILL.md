@@ -40,6 +40,6 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/z
 
 Uses a pasted web session. If a result has `{"needs_auth": true}` (or `check-auth`
 reports the session expired), tell the user to run in their terminal:
-`uv run python scripts/config.py set-secret ZOOM_COOKIES --stdin` and paste the
+`sophonic-config set-secret ZOOM_COOKIES --stdin` and paste the
 `Cookie:` request-header value from https://zoom.us (DevTools → Network). Setup:
 [[setup]].

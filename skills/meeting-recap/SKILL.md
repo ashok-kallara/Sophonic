@@ -212,7 +212,7 @@ Every failure mode reports and stops cleanly for that meeting — never half-wri
 - `{"needs_auth": true, "run": "..."}` from `notes` or `note` (or `check-auth` reporting
   an expired session): tell the user to run the returned command **in their own
   terminal** — paste the `Cookie:` request-header value from https://zoom.us (DevTools →
-  Network) into `uv run python scripts/config.py set-secret ZOOM_COOKIES --stdin` — and
+  Network) into `sophonic-config set-secret ZOOM_COOKIES --stdin` — and
   write nothing. Setup: [[setup]].
 - `[{"message": "No Zoom notes found"}]`: say Zoom returned no notes at all (often an
   expired session that silently didn't redirect) and suggest running `check-auth`.

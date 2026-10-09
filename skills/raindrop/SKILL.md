@@ -149,7 +149,7 @@ version first and the precise version right after it.
 If any call returns `{"needs_auth": true}`, tell the user to create a token at
 raindrop.io → Settings → Integrations → **+ Create new app** → **Create test token**,
 then run **in their own terminal**:
-`uv run python scripts/config.py set-secret RAINDROP_TOKEN --stdin`. Also needs
+`sophonic-config set-secret RAINDROP_TOKEN --stdin`. Also needs
 `features.raindrop true` (`scripts/config.py set features.raindrop true`). Never type the
 token into a tool call yourself. Setup: [[setup]].
 

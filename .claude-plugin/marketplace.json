@@ -1,14 +1,29 @@
 {
   "name": "sophonic",
   "owner": {
-    "name": "Sophonic"
+    "name": "Ashok Kallarakuzhi",
+    "url": "https://github.com/ashok-kallara"
+  },
+  "metadata": {
+    "description": "Sophonic \u2014 an Obsidian-native personal assistant for Claude Code: daily notes, tasks, and a morning brief across Google, Slack, Zoom, GitLab, and Raindrop."
   },
   "plugins": [
     {
       "name": "sophonic",
       "source": ".",
-      "description": "Obsidian-native assistant as pure Claude Code skills — daily notes, tasks, rollover, and a morning brief, plus thin scripts for Google, Slack, Zoom, and GitLab. No MCP server.",
-      "keywords": ["obsidian", "productivity", "daily-notes", "tasks", "slack", "zoom", "gitlab"]
+      "description": "Obsidian-native assistant as pure Claude Code skills \u2014 daily notes, tasks, rollover, and a morning brief, plus thin scripts for Google, Slack, Zoom, and GitLab. No MCP server.",
+      "keywords": [
+        "obsidian",
+        "productivity",
+        "daily-notes",
+        "tasks",
+        "slack",
+        "zoom",
+        "gitlab"
+      ],
+      "homepage": "https://github.com/ashok-kallara/Sophonic",
+      "repository": "https://github.com/ashok-kallara/Sophonic",
+      "category": "productivity"
     }
   ]
 }

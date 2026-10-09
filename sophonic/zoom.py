@@ -20,12 +20,12 @@ from sophonic.browser import run_async
 
 _NEEDS_AUTH = {
     "needs_auth": True,
-    "run": "uv run python scripts/config.py set-secret ZOOM_COOKIES --stdin",
+    "run": "sophonic-config set-secret ZOOM_COOKIES --stdin",
     "detail": (
         "Zoom web session cookies are missing/expired. In your browser, open DevTools "
         "→ Network, click any request to zoom.us, and copy the whole 'Cookie:' request "
         "header value; paste it into "
-        "`uv run python scripts/config.py set-secret ZOOM_COOKIES --stdin`."
+        "`sophonic-config set-secret ZOOM_COOKIES --stdin`."
     ),
 }
 

@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-_NEEDS_AUTH = {"needs_auth": True, "run": "uv run python scripts/auth.py slack"}
+_NEEDS_AUTH = {"needs_auth": True, "run": "sophonic-auth slack"}
 _XOXC_RE = re.compile(rb"xoxc-[0-9A-Za-z-]+")
 _API_TOKEN_RE = re.compile(r'"api_token":"(xoxc-[^"]+)"')
 

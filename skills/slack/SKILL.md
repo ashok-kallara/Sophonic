@@ -30,6 +30,6 @@ uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/s
 
 macOS only (reads the app's encrypted session via the Keychain). If a result contains
 `{"needs_auth": true}`: make sure the Slack desktop app is installed and signed in, then
-have the user run `uv run python scripts/auth.py slack` in their terminal and approve the
+have the user run `sophonic-auth slack` in their terminal and approve the
 one-time Keychain prompt for *Slack Safe Storage*. If it still fails they may need to set
 `slack.workspace_host` or the `SLACK_XOXC_TOKEN` secret. Setup: [[setup]].

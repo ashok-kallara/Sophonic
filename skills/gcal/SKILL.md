@@ -21,5 +21,5 @@ Each event: `{title, start, end, location, description, link}`. Timed starts loo
 ## Auth
 
 Needs Google OAuth. If a call fails with an auth error, tell the user to run in their
-terminal: `uv run python scripts/auth.py google` (from the plugin directory). Setup:
+terminal: `sophonic-auth google` (from the plugin directory). Setup:
 [[setup]].
