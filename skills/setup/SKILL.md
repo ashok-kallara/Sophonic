@@ -12,6 +12,29 @@ interactive wizard — you interview the user in chat and apply changes.
 All commands below run with the Bash tool as:
 `uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/<x>.py" …`
 
+## Preflight: terminal commands
+
+Secrets and OAuth/Keychain steps must be run by the user in their own terminal, using the
+`sophonic-config` / `sophonic-auth` / `sophonic-doctor` commands. Installing the plugin does
+**not** put these on their `PATH`. Before the procedure, check:
+
+```
+command -v sophonic-config sophonic-auth sophonic-doctor
+```
+
+- **All three found** → continue.
+- **Any missing** → tell the user to install them once, in their own terminal:
+  ```
+  uv tool install git+https://github.com/ashok-kallara/Sophonic
+  ```
+  If `uv` itself is missing, point them to https://docs.astral.sh/uv/ first. If the
+  install succeeds but the commands still aren't found, `uv tool update-shell` adds uv's
+  tool directory to their `PATH` (they need to open a new terminal afterwards).
+  Don't block on this: carry on with the steps that don't need it (diagnosing, non-secret
+  settings), and only stop at a secret or auth step that does.
+- Your Bash tool may not see the same `PATH` as the user's terminal, so a "missing" result
+  is a prompt to ask ("have you installed the terminal commands?"), not proof.
+
 ## Procedure
 
 1. **Diagnose.** Run `scripts/doctor.py`. It prints
@@ -31,9 +54,7 @@ All commands below run with the Bash tool as:
    ```
    sophonic-config set-secret <ENV_NAME> --stdin
    ```
-   If `sophonic-config` isn't found, they haven't installed the terminal commands yet:
-   `uv tool install git+https://github.com/ashok-kallara/Sophonic`.
-   `ZOOM_COOKIES` for Zoom, `GITLAB_TOKEN` for GitLab. The `doctor` `fix` field names the
+   (Needs the terminal commands from the preflight above.) `ZOOM_COOKIES` for Zoom, `GITLAB_TOKEN` for GitLab. The `doctor` `fix` field names the
    exact command.
 
 4. **Browser / OAuth / Keychain — hand off to the user.** You cannot open a browser or
