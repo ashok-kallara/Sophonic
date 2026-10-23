@@ -24,12 +24,14 @@ class _FakeDriveApi:
         comments_by_file: dict | None = None,
         doc_text_by_file: dict | None = None,
         user_display_name: str = "",
+        export_errors_by_file: dict | None = None,
     ):
         self._user_email = user_email
         self._user_display_name = user_display_name
         self._pages = files if files and isinstance(files[0], list) else [files]
         self._comments_by_file = comments_by_file or {}
         self._doc_text_by_file = doc_text_by_file or {}
+        self._export_errors_by_file = export_errors_by_file or {}
         self.file_list_calls: list[dict] = []
         self.comments_list_calls: list[dict] = []
         self.export_calls: list[dict] = []
@@ -59,6 +61,9 @@ class _FakeDriveApi:
             def export(self, fileId, mimeType):
                 outer.export_calls.append({"fileId": fileId, "mimeType": mimeType})
                 m = MagicMock()
+                if fileId in outer._export_errors_by_file:
+                    m.execute.side_effect = outer._export_errors_by_file[fileId]
+                    return m
                 m.execute.return_value = outer._doc_text_by_file.get(fileId, "").encode("utf-8")
                 return m
 
@@ -685,3 +690,71 @@ def test_doc_action_items_scope_error_returns_needs_auth(monkeypatch):
     assert result["needs_auth"] is True
     assert "drive.readonly" in result["detail"]
     assert "drive.readonly" in result["run"]
+
+
+def _http_403(body: bytes):
+    from googleapiclient.errors import HttpError
+
+    resp = MagicMock()
+    resp.status = 403
+    return HttpError(resp=resp, content=body)
+
+
+_NOT_EXPORTABLE_BODY = (
+    b'{"error": {"code": 403, "message": "This file cannot be exported by the user.", '
+    b'"errors": [{"reason": "fileNotExportable", "domain": "global"}]}}'
+)
+
+
+def test_doc_action_items_skips_unexportable_doc_and_keeps_scanning(monkeypatch, caplog):
+    from sophonic import gdrive
+
+    locked = {**_FAKE_DOC, "id": "locked", "name": "Mgr FAQ"}
+    good = {**_FAKE_DOC, "id": "good", "name": "Good Doc"}
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[locked, good],
+        doc_text_by_file={"good": f"Action items\n* {_ME_NAME} to ship the report"},
+        export_errors_by_file={"locked": _http_403(_NOT_EXPORTABLE_BODY)},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    with caplog.at_level("WARNING"):
+        result = gdrive.list_doc_action_items()
+
+    assert [r["file_id"] for r in result] == ["good"]
+    assert "Mgr FAQ" in caplog.text
+    assert "locked" in caplog.text
+
+
+def test_doc_action_items_scope_403_during_export_still_needs_auth(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        export_errors_by_file={"doc1": _http_403(b"insufficient scope for drive")},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items()
+    assert result["needs_auth"] is True
+    assert "drive.readonly" in result["detail"]
+
+
+def test_doc_action_items_api_disabled_during_export_still_returns_enable_hint(monkeypatch):
+    from sophonic import gdrive
+
+    fake = _FakeDriveApi(
+        user_email=_ME,
+        user_display_name=_ME_NAME,
+        files=[_FAKE_DOC],
+        export_errors_by_file={"doc1": _http_403(b"SERVICE_DISABLED: drive.googleapis.com")},
+    )
+    monkeypatch.setattr(gdrive, "_service", lambda: fake)
+
+    result = gdrive.list_doc_action_items()
+    assert "needs_auth" not in result
+    assert "not enabled" in result["error"]

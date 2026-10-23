@@ -21,10 +21,13 @@ Drive's own export for spreadsheets only returns the first tab).
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sophonic.google_auth import get_credentials
+
+logger = logging.getLogger(__name__)
 
 _SCOPE_FIX = (
     'sophonic-config set google.scopes '
@@ -68,6 +71,20 @@ def _doc_text(svc: Any, file_id: str) -> str:
     """Export a Google Doc's full body as plain text (drive.readonly is enough)."""
     data = svc.files().export(fileId=file_id, mimeType="text/plain").execute()
     return data.decode("utf-8", "replace") if isinstance(data, bytes) else str(data)
+
+
+def _is_unexportable(exc: Exception) -> bool:
+    """True for the 403 Drive returns on a file the caller can view but not export.
+
+    That's a per-file permission setting (the owner disabled download/copy/print), not a
+    missing OAuth scope, so it must not be mistaken for one.
+    """
+    from googleapiclient.errors import HttpError
+
+    if not (isinstance(exc, HttpError) and getattr(exc, "resp", None) and exc.resp.status == 403):
+        return False
+    raw = (exc.content or b"").decode("utf-8", "replace")
+    return "fileNotExportable" in raw or "cannot be exported" in raw
 
 
 def _sheet_text(sheets_svc: Any, file_id: str) -> str:
@@ -282,7 +299,16 @@ def list_doc_action_items(days: int | None = 30, max_files: int = 50) -> Any:
         needle = me_name.lower()
         for f in files:
             file_id = f["id"]
-            text = _doc_text(svc, file_id)
+            try:
+                text = _doc_text(svc, file_id)
+            except Exception as exc:  # noqa: BLE001 — only the unexportable case is swallowed
+                if not _is_unexportable(exc):
+                    raise
+                logger.warning(
+                    "Skipping %r (%s): viewable but not exportable by this user",
+                    f.get("name", ""), file_id,
+                )
+                continue
             for item_date, item in _extract_dated_action_items(text):
                 if needle not in item.lower():
                     continue
