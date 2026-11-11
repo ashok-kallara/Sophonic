@@ -38,6 +38,63 @@ def test_split_title_extracts_meeting_and_date():
     assert iso is None
 
 
+def _item(title, created="2026-11-09T21:32:11.056Z", **extra):
+    """Shape of one entry from Zoom's `api/search/file` listing (trimmed)."""
+    file = {"id": "abc", "title": title, "fileLink": "https://docs.zoom.us/doc/abc",
+            "meetingNotes": {"meetingIds": ["m"]}, "createdInfo": {"time": created}}
+    file.update(extra)
+    return {"file": file}
+
+
+def test_note_from_item_falls_back_to_created_time_when_title_has_no_stamp():
+    """Real AI-companion notes are titled just with the meeting topic — no timestamp —
+    so the date must come from the listing's createdInfo.time, not the title."""
+    from zoneinfo import ZoneInfo
+
+    from sophonic.zoom import _note_from_item
+
+    note = _note_from_item(_item("Ashok / Aubrianna"), tz=ZoneInfo("America/New_York"))
+    assert note["date"] == "2026-11-09"
+    assert note["meeting"] == "Ashok / Aubrianna"
+    assert note["id"] == "abc"
+    assert note["link"] == "https://docs.zoom.us/doc/abc"
+    assert note["is_meeting_note"] is True
+
+
+def test_note_from_item_created_time_uses_local_date_not_utc():
+    """An evening meeting (20:30 ET) is already the next day in UTC; the date must be
+    the user's local day or it lands in the wrong action_items window."""
+    from zoneinfo import ZoneInfo
+
+    from sophonic.zoom import _note_from_item
+
+    note = _note_from_item(_item("Late sync", created="2026-11-10T01:30:00.000Z"),
+                           tz=ZoneInfo("America/New_York"))
+    assert note["date"] == "2026-11-09"
+
+
+def test_note_from_item_prefers_title_stamp_over_created_time():
+    from zoneinfo import ZoneInfo
+
+    from sophonic.zoom import _note_from_item
+
+    note = _note_from_item(
+        _item("Weekly Sync 2026-07-31 13:33(GMT-4:00)", created="2026-11-09T21:32:11.056Z"),
+        tz=ZoneInfo("America/New_York"),
+    )
+    assert note["date"] == "2026-07-31"
+    assert note["meeting"] == "Weekly Sync"
+
+
+def test_note_from_item_handles_short_fraction_and_missing_or_bad_created_time():
+    """Zoom emits 2-digit fractions ('44.99Z'); absent/garbage timestamps yield None."""
+    from sophonic.zoom import _note_from_item
+
+    assert _note_from_item(_item("A", created="2026-11-06T16:09:44.99Z"))["date"] is not None
+    assert _note_from_item({"file": {"id": "x", "title": "No info"}})["date"] is None
+    assert _note_from_item(_item("B", created="not-a-date"))["date"] is None
+
+
 class _Resp:
     def __init__(self, status, location=""):
         self.status_code = status
