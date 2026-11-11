@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-from datetime import date
+from datetime import UTC, date, datetime, tzinfo
 from typing import Any
 
 import httpx
@@ -107,6 +107,40 @@ def _split_title(title: str) -> tuple[str, str | None]:
     return title, None
 
 
+def _created_date(file: dict[str, Any], tz: tzinfo | None = None) -> str | None:
+    """ISO date (in `tz`, default the system zone) of the listing's `createdInfo.time`.
+
+    AI Companion notes are titled with just the meeting topic, so the listing's UTC
+    creation timestamp (set when the meeting starts) is the only structured date.
+    Converting to local time matters: an evening meeting is already "tomorrow" in UTC.
+    """
+    raw = (file.get("createdInfo") or {}).get("time")
+    if not isinstance(raw, str):
+        return None
+    try:
+        created = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return created.astimezone(tz).date().isoformat()
+
+
+def _note_from_item(item: dict[str, Any], tz: tzinfo | None = None) -> dict[str, Any]:
+    """Build a note summary from one `api/search/file` listing entry."""
+    f = item.get("file", item)
+    title = f.get("title") or "Untitled"
+    meeting, iso = _split_title(title)
+    return {
+        "id": f.get("id"),
+        "title": title,
+        "meeting": meeting,
+        "date": iso or _created_date(f, tz),
+        "link": f.get("fileLink"),
+        "is_meeting_note": bool(f.get("meetingNotes")),
+    }
+
+
 # ── list notes ───────────────────────────────────────────────────────────────
 
 async def _list_notes_async(cookies: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
@@ -136,19 +170,7 @@ async def _list_notes_async(cookies: list[dict[str, Any]], limit: int) -> list[d
             return [_NEEDS_AUTH] if _is_login(page.url) else [{"message": "No Zoom notes found"}]
         items = captured["items"]
 
-    notes: list[dict[str, Any]] = []
-    for item in items[:limit]:
-        f = item.get("file", item)
-        title = f.get("title") or "Untitled"
-        meeting, iso = _split_title(title)
-        notes.append({
-            "id": f.get("id"),
-            "title": title,
-            "meeting": meeting,
-            "date": iso,
-            "link": f.get("fileLink"),
-            "is_meeting_note": bool(f.get("meetingNotes")),
-        })
+    notes = [_note_from_item(item) for item in items[:limit]]
     return notes or [{"message": "No Zoom notes found"}]
 
 
