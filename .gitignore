@@ -27,3 +27,6 @@ wheels/
 
 # Playwright MCP scratch output (snapshots, console logs)
 .playwright-mcp/
+
+# pytest-cov data
+.coverage

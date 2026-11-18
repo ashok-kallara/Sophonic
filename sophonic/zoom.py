@@ -1,9 +1,11 @@
-"""Zoom AI meeting notes — read the signed-in web session's AI Companion notes.
+"""Zoom AI meeting notes — cookie-based FALLBACK (skills prefer the Zoom MCP).
 
 Zoom auto-generates a "Note" (AI Companion) for each meeting, stored in Zoom Docs.
-This lists those notes and fetches their content by driving the authenticated Zoom
-web session (seeded from your pasted ZOOM_COOKIES) — no browser login, no cloud
-recording required. Content is read from the rendered Zoom Docs page.
+The default way to read them is a Zoom MCP called by Claude (see skills/zoom/SKILL.md),
+which needs no cookies. This module is the fallback for setups without one: it lists
+the notes and fetches their content by driving the authenticated Zoom web session
+(seeded from your pasted ZOOM_COOKIES) — no browser login, no cloud recording
+required. Content is read from the rendered Zoom Docs page.
 """
 
 from __future__ import annotations

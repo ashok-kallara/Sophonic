@@ -118,13 +118,14 @@ Otherwise use `events-today`. Report matching events with start time and link.
 
 ### 8. Zoom notes
 
+Use the `zoom` skill's **Zoom MCP** path first: `zoom_search` on `zoom_my_notes` — `query`
+matches note **titles** only (not bodies), so use title keywords, and/or a `create_time`
+window if the question has a time scope — scan the titles, and fetch relevant notes with
+`my_notes_get_note_content` (`generated_note_content`) to read what was actually said.
+Only when no Zoom MCP is reachable, fall back to the cookie script:
+
 ```
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" notes
-```
-
-Scan the summaries. If a note title looks relevant, fetch its content:
-
-```
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" note --id <id>
 ```
 

@@ -47,10 +47,16 @@ surface that source's status (and the `run` command for the user's terminal) and
    if present), or `- _No events_`. Replace the section on re-run, don't stack it.
 
 3. **Zoom action items.** Cover every meeting since the user's last brief, not just
-   today's: `zoom.py action-items --since <step 1's prior-note date> --until <today>`.
-   If step 1 found no prior note at all (first-ever run, empty vault), fall back to
-   `--days 1` (today only). Override with an explicit `--since/--until/--days` or
-   `--owner` if the user asks for something narrower/wider. For each returned group,
+   today's. Fetch per [[zoom]] — **Zoom MCP first** (`zoom_search` over `zoom_my_notes` with
+   a `create_time` window from step 1's prior-note date through today, then
+   `my_notes_get_note_content` per note and the `## Action Items` bullets of
+   `generated_note_content`), falling back to the cookie script
+   `zoom.py action-items --since <step 1's prior-note date> --until <today>` only when no
+   Zoom MCP is reachable. If step 1 found no prior note at all (first-ever run, empty
+   vault), cover today only. Narrow/widen the window or filter by owner if the user asks.
+   Both sources yield the same shape — groups of `{meeting, date, link, items}` with
+   plain-text items (the MCP path strips markdown emphasis to match). Items come only from
+   the AI summary's action-item section — never fetch transcripts. For each group,
    under a `## Meeting Action Items` section (placed before `## Notes`), add a
    `### [<meeting> — <date>](<link>)` subheading and one `- [ ] <item> #zoom` per item —
    unless a subheading with that exact heading text already exists (e.g. rollover from
@@ -60,6 +66,22 @@ surface that source's status (and the `run` command for the user's terminal) and
    same-day re-runs idempotent; it's expected and fine for an item to already sit in a
    prior day's note too, since the point of widening the window is to catch meetings
    that happened before today's note existed.
+
+   **Summary not ready.** A group with `summary_ready: false` (its AI summary hasn't been
+   generated yet — see [[zoom]]) still gets its `### [<meeting> — <date>](<link>)` subheading
+   under `## Meeting Action Items`, with this single line instead of items:
+
+   ```
+   - _Summary not ready yet — re-run start-my-day to pull its action items._
+   ```
+
+   It is a plain bullet, **never a `- [ ]` checkbox**, so it isn't counted or rolled over as
+   a task. On a re-run: if the heading already has that line and the summary is still not
+   ready, change nothing (don't add a second copy). Once the summary is ready, **replace**
+   that line with the meeting's `- [ ] <item> #zoom` lines, or with
+   `- _No action items in the summary._` if the summary has none. Only today's note is
+   edited this way — a placeholder left in a prior day's note stays as it was, since the
+   widened window re-covers that meeting in today's note anyway.
 
 4. **Google Tasks + Doc action items.** `gtasks.py list`. For each task add
    `- [ ] [<title>](<link>) (Google Tasks: <list>) 📅 <due> #gtask` under `## Tasks`
@@ -130,7 +152,9 @@ surface that source's status (and the `run` command for the user's terminal) and
 
 7. **Report.** Summarize what changed: counts added per source (Zoom / Google Tasks /
    Drive / Gmail / Slack), how many topic groups were created vs. added to, how many
-   tasks rolled over, and any sources that need auth or errored (with the fix command).
+   tasks rolled over, which Zoom meetings were marked "summary not ready" (and which
+   earlier placeholders were filled in this run), and any sources that need auth or errored
+   (with the fix command).
 
 ## Scope flags
 

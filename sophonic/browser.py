@@ -1,4 +1,8 @@
-"""Playwright persistent browser context — chromium / chrome / island."""
+"""Playwright persistent browser context — chromium / chrome / island.
+
+Only used by the Zoom cookie fallback (`sophonic/zoom.py`), which runs when no Zoom MCP
+is available. The default Zoom path is the MCP and needs none of this.
+"""
 
 from __future__ import annotations
 
@@ -41,7 +45,7 @@ async def persistent_browser(
     Opened headed on first run (no session saved) so the user can log in.
     Subsequent calls run headless unless headless=False is forced.
 
-    integration: "slack" | "zoom"
+    integration: "zoom" (the only browser-driven integration)
     cookies: optional list of Playwright cookie dicts seeded into the context
         (used to reuse a session captured elsewhere, e.g. pasted Zoom cookies).
     """
@@ -94,31 +98,6 @@ async def persistent_browser(
             yield ctx
         finally:
             await ctx.close()
-
-
-async def open_auth_browser(integration: str, url: str) -> None:
-    """Open a headed browser at url so the user can log in once."""
-    async with persistent_browser(integration, headless=False) as ctx:
-        # A persistent context already has an initial page. Reuse it and bring it to
-        # front so we drive the window the user actually sees — some managed browsers
-        # open new_page() in the background (or a separate window).
-        page = ctx.pages[0] if ctx.pages else await ctx.new_page()
-        await page.bring_to_front()
-        try:
-            await page.goto(url, wait_until="domcontentloaded", timeout=60_000)
-            print(f"[sophonic] Opened {page.url}")
-        except Exception as exc:
-            print(
-                f"[sophonic] Could not auto-load {url}: {exc}\n"
-                f"[sophonic] Navigate to {url} manually in the open window."
-            )
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: input(
-                f"\n[sophonic] Log in to {integration} in the browser, "
-                "then press Enter here to save the session...\n"
-            ),
-        )
 
 
 def run_async(coro):

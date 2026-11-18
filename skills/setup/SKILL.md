@@ -39,7 +39,9 @@ command -v sophonic-config sophonic-auth sophonic-doctor
 
 1. **Diagnose.** Run `scripts/doctor.py`. It prints
    `{"ok", "checks":[{name, ok, detail, fix}]}`. Summarize which integrations are green
-   and which need attention.
+   and which need attention. Checks marked `"optional": true` (the Zoom cookie fallback)
+   don't count toward `ok` — don't report them as problems until step 5 says to. Then run
+   step 5 for Zoom, since `doctor` cannot see an MCP.
 
 2. **Fix each failing check by interviewing the user.** For every `ok:false` entry, ask
    for the value it needs, then persist it:
@@ -54,8 +56,9 @@ command -v sophonic-config sophonic-auth sophonic-doctor
    ```
    sophonic-config set-secret <ENV_NAME> --stdin
    ```
-   (Needs the terminal commands from the preflight above.) `ZOOM_COOKIES` for Zoom, `GITLAB_TOKEN` for GitLab. The `doctor` `fix` field names the
-   exact command.
+   (Needs the terminal commands from the preflight above.) `GITLAB_TOKEN` for GitLab;
+   `ZOOM_COOKIES` only for the Zoom cookie fallback (see the Zoom note below). The `doctor`
+   `fix` field names the exact command.
 
 4. **Browser / OAuth / Keychain — hand off to the user.** You cannot open a browser or
    read the Keychain. For a `google.auth` gap have them run
@@ -64,8 +67,26 @@ command -v sophonic-config sophonic-auth sophonic-doctor
    `google.client_secret`, tell them to download a **Desktop app** OAuth client JSON from
    Google Cloud and save it at the path in the check `detail`.
 
-5. **Re-check.** After the user reports back, run `scripts/doctor.py` again and confirm
-   the relevant checks are now green.
+5. **Zoom — verify the Zoom MCP (only if `features.zoom` is on).** Make one cheap call:
+   `zoom_search` with
+   `{"datasource_filters": [{"datasource": "zoom_my_notes"}], "page_size": 1}`. If it isn't
+   in your tool list directly, call it through Runlayer's `execute_tool` with
+   `tool_name: "zoom_search"`. **Don't run `search_tools` to look for it** — that result is
+   ~100 KB. Then:
+   - **Returns `data`** (even an empty list) → Zoom is ready. Nothing else to set up; ignore
+     the `doctor` `zoom` cookie check.
+   - **Returns an `AUTH_REQUIRED_` / `DISABLED_` / `INPUTS_REQUIRED_` placeholder, or an auth
+     error** → relay its instructions verbatim (usually a one-time Zoom sign-in in Runlayer).
+     Re-run the probe after the user confirms.
+   - **The tool doesn't exist** (no Runlayer, or no Zoom connector on it) → tell the user the
+     recommended path is a Zoom MCP: in Runlayer, add or request the **Zoom** connector (how
+     access is granted is org-specific, so ask them to check with whoever runs Runlayer).
+     Only if they can't, or want Zoom working now, set up the cookie fallback: the
+     `ZOOM_COOKIES` secret (step 3) plus Playwright's Chromium (see Notes). The `doctor`
+     `zoom` check then becomes the one to watch.
+
+6. **Re-check.** After the user reports back, run `scripts/doctor.py` again (and the step-5
+   probe if Zoom was being fixed) and confirm the relevant checks are now green.
 
 ## Config keys (dotted)
 
@@ -75,8 +96,14 @@ command -v sophonic-config sophonic-auth sophonic-doctor
 `browser.zoom.engine` (`chromium`|`chrome`|`island`) ·
 `slack.workspace_host` (optional) · `gitlab.url`, `gitlab.default_project`.
 
-Slack needs no config beyond signing into the desktop app (`auth.py slack`). Zoom needs
-the `ZOOM_COOKIES` secret. No LLM key is required — Claude Code is the model.
+Slack needs no config beyond signing into the desktop app (`auth.py slack`). No LLM key is
+required — Claude Code is the model.
+
+**Zoom needs no config if a Zoom MCP is connected** (e.g. Runlayer's Zoom connector) — the
+`zoom` skill calls it directly; step 5 verifies it. The cookie fallback (`ZOOM_COOKIES` +
+Playwright's Chromium) is only for setups without one. The `doctor` `zoom` check reports
+that fallback and is marked `optional`, so a failure there doesn't make the overall `ok`
+false — don't push the user to fix it when the MCP works.
 
 ## Notes
 
@@ -87,7 +114,7 @@ the `ZOOM_COOKIES` secret. No LLM key is required — Claude Code is the model.
   fields and every hint the scripts print use those names. When *you* run a command via Bash, use the
   `uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/…"` form,
   which works whether or not the wrappers are installed.
-- `uv` must be installed; the first run of any script triggers `uv sync`. Zoom also needs
-  Playwright's Chromium — install once with
+- `uv` must be installed; the first run of any script triggers `uv sync`. The Zoom *cookie
+  fallback* (not the MCP) also needs Playwright's Chromium — install once with
   `uv run --project "${CLAUDE_PLUGIN_ROOT}" playwright install chromium` (it must run in the
   plugin's environment: the browser build is tied to the locked Playwright version).
