@@ -39,7 +39,10 @@ def _zoom() -> int:
         print("✓ Zoom cookies are set. Try: sophonic-config get, or the zoom skill.")
         return 0
     print(
-        "Zoom needs your web-session cookies (browser automation is blocked in managed browsers).\n"
+        "Zoom normally needs no setup here: Claude reads your notes through a Zoom MCP\n"
+        "(e.g. Runlayer's). Only if you have no Zoom MCP, use the cookie fallback below.\n"
+        "\n"
+        "Fallback — your web-session cookies (browser automation is blocked in managed browsers).\n"
         "  1. Log in to https://zoom.us, open DevTools → Network.\n"
         "  2. Click any request to zoom.us → Request Headers → copy the whole 'Cookie:' value.\n"
         "  3. Run:  sophonic-config set-secret ZOOM_COOKIES --stdin\n"

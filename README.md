@@ -1,7 +1,8 @@
 # Sophonic
 
-An Obsidian-native personal assistant delivered as a **pure Claude Code plugin** — no
-MCP server, no CLI to install, no LLM API key. Claude Code *is* the model and the tool
+An Obsidian-native personal assistant delivered as a **pure Claude Code plugin** — it
+ships no MCP server (it uses a Zoom MCP you already have, e.g. via Runlayer), needs no CLI
+to install, and needs no LLM API key. Claude Code *is* the model and the tool
 loop; Sophonic just adds skills that tell it how to run your day, plus a handful of thin
 scripts for the things a model can't do by itself.
 
@@ -14,7 +15,9 @@ Sophonic splits cleanly along what a Claude subagent can and cannot do natively:
   its Read/Write/Edit/Glob/Grep tools. There is no code and no API for these — see
   `skills/obsidian`, `skills/reminders`, `skills/start-my-day`.
 - **Auth-bound sources are thin scripts.** Google, Slack, Zoom, and GitLab need OAuth,
-  Keychain decryption, or cookie sessions — things a model can't perform. Each is a small
+  Keychain decryption, or cookie sessions — things a model can't perform. (Zoom is the
+  exception: Claude reads it through a Zoom MCP when one is connected, and the script is
+  only the fallback.) Each is a small
   `scripts/<name>.py` that fetches data and prints **one JSON object**; the matching skill
   invokes it over Bash and reads the result. The scripts are read-only fetchers — Claude
   writes anything that lands in the vault.
@@ -60,8 +63,10 @@ browser for the same thing.)
    ```
    This gives you `sophonic-config`, `sophonic-doctor`, and `sophonic-auth` on your
    `PATH`. Every hint the plugin prints ("run `sophonic-auth google`…") assumes them.
-3. For Zoom, install the Playwright browser once. `/sophonic:setup` does this for you; by
-   hand, it must run in the plugin's own environment (the browser build is tied to the
+3. **Zoom needs no setup if you have a Zoom MCP connected** (e.g. Runlayer's Zoom
+   connector) — the skills call it directly and prefer it. Only for the cookie *fallback*
+   (no Zoom MCP), install the Playwright browser once. `/sophonic:setup` does this for you;
+   by hand, it must run in the plugin's own environment (the browser build is tied to the
    Playwright version in `uv.lock`, which `uv tool install` does not use):
    ```bash
    uv run --project ~/.claude/plugins/cache/sophonic/sophonic/<commit-sha> playwright install chromium
@@ -109,7 +114,7 @@ touching the chat transcript:
 sophonic-config show                       # effective config (secrets redacted)
 sophonic-config set vault.path /path/to/vault
 sophonic-config set features.gitlab true
-sophonic-config set-secret ZOOM_COOKIES --stdin   # paste, then Enter
+sophonic-config set-secret ZOOM_COOKIES --stdin   # Zoom cookie fallback only; paste, then Enter
 sophonic-doctor                            # status of every integration
 sophonic-auth google | slack | zoom        # authenticate
 ```
@@ -131,15 +136,17 @@ These open a browser or read a local session, so you run them — not Claude (th
 ```bash
 sophonic-auth google   # OAuth consent (needs a Desktop-app client JSON)
 sophonic-auth slack    # reads the signed-in Slack desktop app (Keychain prompt)
-sophonic-auth zoom     # prints how to paste your zoom.us cookies
+sophonic-auth zoom     # Zoom cookie fallback: prints how to paste your zoom.us cookies
 ```
 
 - **Google** — download a **Desktop app** OAuth client JSON from Google Cloud and save it
   at the path `doctor` reports (`~/.sophonic/google_client_secret.json` by default).
 - **Slack** — macOS only; decrypts the desktop app's session via the Keychain (approve the
   one-time *Slack Safe Storage* prompt).
-- **Zoom** — paste the `Cookie:` request header from https://zoom.us into
-  `sophonic-config set-secret ZOOM_COOKIES --stdin`.
+- **Zoom** — nothing to do if a Zoom MCP (e.g. Runlayer's) is connected: the skills use it
+  first. Only without one, paste the `Cookie:` request header from https://zoom.us into
+  `sophonic-config set-secret ZOOM_COOKIES --stdin` (the cookie fallback; the session
+  expires, which is why the MCP is the default).
 - **GitLab** — set `gitlab.url` and the `GITLAB_TOKEN` secret (PAT with `api` scope);
   requires GitLab 17.3+ (the `/api/v4/mcp` endpoint).
 - **Raindrop.io** — no browser flow: create a permanent "test token" at

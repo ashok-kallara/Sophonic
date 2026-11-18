@@ -20,24 +20,18 @@ this skill's job — [[start-my-day]] already turns those into tasks under
 `## Meeting Action Items`, and the two sections coexist on the same note without
 conflict.
 
-Fetching a note's content is expensive (~6s of browser page-load per meeting), so this
-skill **checks the note before it fetches**: any meeting whose link is already under
-`## Meeting Recaps` is skipped entirely — no `note --id` call is made for it. Re-running
-on the same day should therefore be fast, idempotent, and change nothing for meetings
-already captured.
+Fetching a note's content is one call **per meeting** (and ~6s of browser page-load each on
+the cookie fallback), so this skill **checks the note before it fetches**: any meeting
+already under `## Meeting Recaps` is skipped entirely — no content fetch is made for it.
+Re-running on the same day should therefore be fast, idempotent, and change nothing for
+meetings already captured.
 
-## Run
+## Source
 
-```
-uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" check-auth
-uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" notes --limit 50
-uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" note --id <doc_id>
-```
-
-`notes` is one relatively cheap call; `note --id` is one slow call **per meeting**. See
-[[zoom]] for the full return shapes. Raising `--limit` costs nothing extra — the script
-captures the whole notes-list response before truncating to `limit` client-side, so 50 is
-a safe default even on a light day.
+How to list and fetch notes is defined in [[zoom]] — **use the Zoom MCP** (`zoom_search` to
+list, `my_notes_get_note_content` to fetch) and only fall back to the cookie script
+(`zoom.py notes` / `zoom.py note --id`) when no Zoom MCP is reachable. The steps below say
+what to do with the result; where the two sources differ, both are given.
 
 ## Procedure
 
@@ -53,6 +47,15 @@ template if it doesn't exist yet.
 never edit a note you haven't read.
 
 ### 2. List today's meetings
+
+**Zoom MCP (default).** Call `zoom_search` on `zoom_my_notes` with a `create_time` window of
+today's *local* day converted to UTC (details in [[zoom]]). The server does the date
+filtering, and every result has a timestamp, so there is no "undated" bucket. Candidates are
+all results; sort them by `create_time` ascending so recaps land in meeting order. Hand-authored
+notes are excluded later by using only `generated_note_content` (step 4), so nothing is
+copied from a manual note.
+
+**Cookie fallback.** Only when no Zoom MCP is reachable:
 
 ```
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" notes --limit 50
@@ -77,18 +80,47 @@ is a normal outcome, not an error.
 
 ### 3. Pre-check each candidate BEFORE fetching it
 
-This runs **per meeting, before any `note --id` call.** Do not batch-fetch first and
-dedupe after — that defeats the entire point of this step.
+This runs **per meeting, before any content fetch.** Do not batch-fetch first and dedupe
+after — that defeats the entire point of this step.
 
-For each candidate, compute its dedup key: its `link`, or
-`https://docs.zoom.us/doc/<id>` when `link` is null (the same URL template the script
-itself builds internally, so the two always agree). If that key already appears anywhere
-under `## Meeting Recaps` in the note you read in step 1, **skip this meeting — issue no
-`note --id` call for it** and count it as "already present."
+For each candidate, take its Zoom doc id (`file_id` from the MCP, `id` from the script). If
+that id appears **anywhere** under `## Meeting Recaps` in the note you read in step 1 (match
+it as a substring — recaps written earlier by the cookie path use a different URL host but
+carry the same id), **skip this meeting — fetch nothing for it** and count it as "already
+present."
 
 Only the surviving candidates move on to step 4.
 
 ### 4. Fetch and trim each survivor
+
+#### Zoom MCP (default)
+
+Call `my_notes_get_note_content` with `{"noteId": "<file_id>"}` and use **only
+`generated_note_content`** (ignore `manual_note_content` — hand-authored text must not be
+copied into the daily note). It is already clean markdown with `##` headings, so trimming is
+short:
+
+- **Drop action-type sections.** Remove any section whose heading, lowercased with `#`/`**`/
+  trailing `:` stripped, is exactly one of: `action items`, `action item`, `next steps`,
+  `next step`, `follow-ups`, `follow ups`, `followups`, `to-dos`, `todos` — the heading line
+  and everything until the next heading. Those become tasks via [[start-my-day]]. **Keep every
+  other section** (Key Outcomes, Decisions Made, Blockers, Risks, Pending Confirmation, Summary,
+  …); the section set varies by meeting, so don't whitelist.
+- Re-emit each kept heading as `#### <heading text>`.
+- Keep the bullets as written. **Never emit `- [ ]`** in this section — a checkbox here
+  would get scraped by the Obsidian Tasks plugin; if the source has one, write plain `- `.
+- Cap and emptiness: ~150 lines / ~8000 characters, ending a
+  truncated block with `_Truncated — full recap in the linked Zoom doc._`, and **if what
+  remains is under ~40 characters, write nothing** and count the meeting as "recap not
+  ready" (an empty block would look "already present" next run and permanently skip a
+  meeting whose summary simply hasn't finished generating).
+
+The link for the callout title is `https://docs.zoom.us/doc/<file_id>`, the date is the local
+date of `create_time`. Then go to step 5.
+
+#### Cookie fallback
+
+Only when no Zoom MCP is reachable:
 
 ```
 uv run --project "${CLAUDE_PLUGIN_ROOT}" python "${CLAUDE_PLUGIN_ROOT}/scripts/zoom.py" note --id <doc_id>
@@ -209,19 +241,25 @@ summary ready yet, and any error or auth gap along with its fix command.
 
 Every failure mode reports and stops cleanly for that meeting — never half-write a block.
 
-- `{"needs_auth": true, "run": "..."}` from `notes` or `note` (or `check-auth` reporting
-  an expired session): tell the user to run the returned command **in their own
-  terminal** — paste the `Cookie:` request-header value from https://zoom.us (DevTools →
-  Network) into `sophonic-config set-secret ZOOM_COOKIES --stdin` — and
+- **No Zoom MCP reachable** (tool missing, or an auth/disabled placeholder the user can't
+  resolve): say so, then use the cookie fallback per [[zoom]]. If the fallback fails too,
+  report both reasons.
+- **Zoom MCP returns an error** (e.g. permission denied): report it verbatim and write
+  nothing for that call.
+- Cookie fallback only — `{"needs_auth": true, "run": "..."}` from `notes` or `note` (or
+  `check-auth` reporting an expired session): tell the user to run the returned command
+  **in their own terminal** — paste the `Cookie:` request-header value from https://zoom.us
+  (DevTools → Network) into `sophonic-config set-secret ZOOM_COOKIES --stdin` — and
   write nothing. Setup: [[setup]].
-- `[{"message": "No Zoom notes found"}]`: say Zoom returned no notes at all (often an
-  expired session that silently didn't redirect) and suggest running `check-auth`.
-- `{"error": "..."}` from any call: report it verbatim. If it mentions
+- Cookie fallback only — `[{"message": "No Zoom notes found"}]`: say Zoom returned no notes
+  at all (often an expired session that silently didn't redirect) and suggest running
+  `check-auth`.
+- Cookie fallback only — `{"error": "..."}`: report it verbatim. If it mentions
   Playwright/Chromium, point at `uv run playwright install chromium`.
 - Notes returned but none match today: report it plainly and change nothing — a normal
   outcome, not an error.
-- A single `note --id` call failing: report that one meeting as failed and continue with
-  the rest; don't abort the whole run.
+- A single note fetch failing: report that one meeting as failed and continue with the
+  rest; don't abort the whole run.
 
 ## Refreshing a recap
 

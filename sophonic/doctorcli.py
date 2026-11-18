@@ -16,8 +16,10 @@ def doctor() -> dict:
     cfg = load_config()
     checks: list[dict] = []
 
-    def add(name: str, ok: bool, detail: str, fix: str = "") -> None:
+    def add(name: str, ok: bool, detail: str, fix: str = "", optional: bool = False) -> None:
         entry = {"name": name, "ok": ok, "detail": detail}
+        if optional:
+            entry["optional"] = True  # reported, but never fails the overall result
         if not ok and fix:
             entry["fix"] = fix
         checks.append(entry)
@@ -46,12 +48,17 @@ def doctor() -> dict:
             ok, detail = False, str(exc)
         add("slack", ok, detail, "sophonic-auth slack  (approve the Keychain prompt)")
 
-    # zoom — pasted web-session cookies; probe validity, not just presence
+    # zoom — the default path is the Zoom MCP, which only Claude can call, so it can't be
+    # probed here. This checks the pasted web-session cookies used as the *fallback* when
+    # no Zoom MCP is available; it is informational and never fails the overall result.
     if cfg.features.zoom:
         from sophonic.zoom import check_auth
         probe = check_auth()
-        add("zoom", probe["ok"], probe["detail"],
-            "sophonic-config set-secret ZOOM_COOKIES --stdin  (paste the zoom.us 'Cookie:' header)")
+        add("zoom", probe["ok"],
+            f"cookie fallback (default is the Zoom MCP): {probe['detail']}",
+            "Only if you have no Zoom MCP: "
+            "sophonic-config set-secret ZOOM_COOKIES --stdin  (paste the zoom.us 'Cookie:' header)",
+            optional=True)
 
     # gitlab
     if cfg.features.gitlab:
@@ -68,7 +75,10 @@ def doctor() -> dict:
             "sophonic-config set-secret RAINDROP_TOKEN --stdin  "
             "(from raindrop.io/settings/integrations)")
 
-    return {"ok": all(c["ok"] for c in checks), "checks": checks}
+    return {
+        "ok": all(c["ok"] for c in checks if not c.get("optional")),
+        "checks": checks,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

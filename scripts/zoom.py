@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Zoom AI Companion meeting notes (read-only) → JSON.
+"""Zoom AI Companion meeting notes (read-only) → JSON. Cookie-based FALLBACK.
+
+Skills try the Zoom MCP first (see skills/zoom/SKILL.md); use this script only when no
+Zoom MCP is available.
 
     uv run python scripts/zoom.py check-auth
     uv run python scripts/zoom.py notes --limit 20
